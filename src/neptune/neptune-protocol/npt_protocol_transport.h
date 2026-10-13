@@ -72,6 +72,13 @@ struct npt_cmd_set_reply_stream {
 #define NPT_TRANSPORT_RING_WAIT_VQ_SEQNO   6u
 #define NPT_TRANSPORT_RING_WAIT_PEER       7u
 
+/* Virtio timelines (ring_idx values) every Neptune context is created
+ * with.  0 is the CPU timeline; Win32 event fences use the upper half,
+ * from NPT_EVENT_RING_BASE.  Both ends size their per-timeline state from
+ * these, so they cannot disagree on the split. */
+#define NPT_MAX_TIMELINES   64u
+#define NPT_EVENT_RING_BASE (NPT_MAX_TIMELINES / 2)
+
 /* Ring status bits (host writes, guest reads).  ALIVE is OR-set by
  * the ring-monitor thread on opted-in rings; the guest watchdog
  * clears and re-checks to detect a wedged host. */

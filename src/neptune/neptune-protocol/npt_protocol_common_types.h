@@ -12777,6 +12777,9 @@ static inline void npt_decode_D3D12_FEATURE_DATA_D3D12_OPTIONS1(struct npt_cs_de
 static inline size_t npt_sizeof_D3D12_FEATURE_DATA_D3D12_OPTIONS2(const D3D12_FEATURE_DATA_D3D12_OPTIONS2 *val, int max_mode);
 static inline void npt_encode_D3D12_FEATURE_DATA_D3D12_OPTIONS2(struct npt_cs_encoder *enc, const D3D12_FEATURE_DATA_D3D12_OPTIONS2 *val);
 static inline void npt_decode_D3D12_FEATURE_DATA_D3D12_OPTIONS2(struct npt_cs_decoder *dec, D3D12_FEATURE_DATA_D3D12_OPTIONS2 *val);
+static inline size_t npt_sizeof_D3D12_SERIALIZED_ROOT_SIGNATURE_DESC(const D3D12_SERIALIZED_ROOT_SIGNATURE_DESC *val, int max_mode);
+static inline void npt_encode_D3D12_SERIALIZED_ROOT_SIGNATURE_DESC(struct npt_cs_encoder *enc, const D3D12_SERIALIZED_ROOT_SIGNATURE_DESC *val);
+static inline void npt_decode_D3D12_SERIALIZED_ROOT_SIGNATURE_DESC(struct npt_cs_decoder *dec, D3D12_SERIALIZED_ROOT_SIGNATURE_DESC *val);
 static inline size_t npt_sizeof_D3D12_FEATURE_DATA_ROOT_SIGNATURE(const D3D12_FEATURE_DATA_ROOT_SIGNATURE *val, int max_mode);
 static inline void npt_encode_D3D12_FEATURE_DATA_ROOT_SIGNATURE(struct npt_cs_encoder *enc, const D3D12_FEATURE_DATA_ROOT_SIGNATURE *val);
 static inline void npt_decode_D3D12_FEATURE_DATA_ROOT_SIGNATURE(struct npt_cs_decoder *dec, D3D12_FEATURE_DATA_ROOT_SIGNATURE *val);

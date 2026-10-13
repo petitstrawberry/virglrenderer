@@ -168,9 +168,13 @@ npt_decode_IDXGIOutputDuplication_AcquireNextFrame_args_temp(struct npt_cs_decod
         uint64_t _gid;
         npt_decode_uint64_t(dec, &_gid);
         args->_guest_id_ppDesktopResource = _gid;
-        args->ppDesktopResource = npt_cs_decoder_alloc_temp(dec, sizeof(void *));
-        if (!args->ppDesktopResource) return;
-        *args->ppDesktopResource = NULL;
+        if (_gid) {
+            args->ppDesktopResource = npt_cs_decoder_alloc_temp(dec, sizeof(void *));
+            if (!args->ppDesktopResource) return;
+            *args->ppDesktopResource = NULL;
+        } else {
+            args->ppDesktopResource = NULL;
+        }
     }
     /* Allocate temp storage for output-only parameters */
 
@@ -749,6 +753,7 @@ npt_decode_IDXGIOutputDuplication_UnMapDesktopSurface_args_temp(struct npt_cs_de
                                                                 struct npt_command_IDXGIOutputDuplication_UnMapDesktopSurface *args)
 {
     /* Decode input parameters from the wire */
+
     /* Allocate temp storage for output-only parameters */
 }
 
@@ -865,6 +870,7 @@ npt_decode_IDXGIOutputDuplication_ReleaseFrame_args_temp(struct npt_cs_decoder *
                                                          struct npt_command_IDXGIOutputDuplication_ReleaseFrame *args)
 {
     /* Decode input parameters from the wire */
+
     /* Allocate temp storage for output-only parameters */
 }
 

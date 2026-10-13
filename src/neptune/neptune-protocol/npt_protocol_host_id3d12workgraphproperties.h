@@ -31,6 +31,7 @@ npt_decode_ID3D12WorkGraphProperties_GetNumWorkGraphs_args_temp(struct npt_cs_de
                                                                 struct npt_command_ID3D12WorkGraphProperties_GetNumWorkGraphs *args)
 {
     /* Decode input parameters from the wire */
+
     /* Allocate temp storage for output-only parameters */
 }
 
@@ -1356,6 +1357,128 @@ npt_dispatch_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements(struct npt
         if (!npt_cs_decoder_get_fatal(ctx->decoder)) {
             if (npt_cs_encoder_acquire(ctx->encoder)) {
                 npt_encode_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements_reply(ctx->encoder, &args);
+                npt_cs_encoder_release(ctx->encoder);
+            }
+        }
+    }
+
+    npt_cs_decoder_reset_temp_pool(ctx->decoder);
+}
+
+/*
+ * ID3D12WorkGraphProperties::GetEntrypointRecordAlignmentInBytes
+ */
+
+struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes {
+    void *_self;
+    UINT WorkGraphIndex;
+    UINT EntrypointIndex;
+    UINT ret;
+};
+
+static inline void
+npt_decode_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes_args_temp(struct npt_cs_decoder *dec,
+                                                                                   struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes *args)
+{
+    /* Decode input parameters from the wire */
+    npt_decode_UINT(dec, &args->WorkGraphIndex);
+    npt_decode_UINT(dec, &args->EntrypointIndex);
+    /* Allocate temp storage for output-only parameters */
+
+
+}
+
+static inline void
+npt_replace_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes_args_handle(struct npt_dispatch_context *ctx, struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes *args)
+{
+}
+
+static inline void
+npt_encode_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes_reply(struct npt_cs_encoder *enc,
+                                                                               const struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes *args)
+{
+    struct npt_reply_header _reply = {
+        .cmd_type = NPT_CMD_TYPE(255, NPT_IFACE_ID_ID3D12WorkGraphProperties,
+                                 NPT_METHOD_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes),
+        .cmd_return = (uint32_t)args->ret,
+    };
+    npt_cs_encoder_write(enc, sizeof(_reply), &_reply, sizeof(_reply));
+}
+
+static inline void
+npt_dispatch_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes(struct npt_dispatch_context *ctx,
+                                                                           uint32_t cmd_flags,
+                                                                           uint64_t object_id)
+{
+    struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes args;
+    memset(&args, 0, sizeof(args));
+
+    npt_decode_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes_args_temp(ctx->decoder, &args);
+
+    if (npt_cs_decoder_get_fatal(ctx->decoder))
+        return;
+
+    args._self = npt_cs_handle_lookup(ctx, object_id,
+                                       NPT_OBJECT_TYPE_ID3D12WORKGRAPHPROPERTIES);
+    if (!args._self) {
+        /* The host no longer knows this object -- a guest-side lifetime
+         * bug, or a teardown race between a release and a call already
+         * on the wire.  A reply-less call is dropped: losing one
+         * command on an object that is already gone is a smaller harm
+         * than the context teardown a fatal costs.  A call that owes a
+         * reply still goes fatal; there is no honest answer to encode,
+         * and a silent drop would hang the caller.  Consume the
+         * recorded miss either way so it cannot leak into the next
+         * command. */
+        (void)npt_cs_decoder_take_handle_miss(ctx->decoder);
+        if (!(cmd_flags & NPT_CMD_FLAG_REPLY)) {
+            npt_log("dropping ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes on unregistered object "
+                    "0x%016" PRIx64, (uint64_t)object_id);
+
+            npt_cs_decoder_reset_temp_pool(ctx->decoder);
+            return;
+        }
+        npt_cs_decoder_set_fatal(ctx->decoder);
+        return;
+    }
+
+    npt_replace_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes_args_handle(ctx, &args);
+
+    if (npt_cs_decoder_take_handle_miss(ctx->decoder)) {
+        /* An argument handle failed to translate; the backend would
+         * dereference the NULL left in its place.  Same policy as a
+         * missing self: drop when nothing awaits a reply, go fatal
+         * when something does. */
+        if (!(cmd_flags & NPT_CMD_FLAG_REPLY)) {
+            npt_log("dropping ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes: an argument handle is unknown "
+                    "to this context");
+
+            npt_cs_decoder_reset_temp_pool(ctx->decoder);
+            return;
+        }
+        npt_cs_decoder_set_fatal(ctx->decoder);
+        return;
+    }
+
+    PFN_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes _original = NPT_COM_VTBL_FUNC(
+        PFN_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes, npt_com_vtable(args._self),
+        NPT_VTBL_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes);
+
+    if (ctx->id3d12workgraphproperties_dispatch_overrides && ctx->id3d12workgraphproperties_dispatch_overrides->GetEntrypointRecordAlignmentInBytes) {
+        args.ret = ctx->id3d12workgraphproperties_dispatch_overrides->GetEntrypointRecordAlignmentInBytes(ctx, &args, _original);
+    } else {
+        args.ret = _original(args._self, args.WorkGraphIndex, args.EntrypointIndex);
+    }
+
+    /* Register any output COM handles in the context object table so
+     * later commands that reference them can be validated.  A void**
+     * output takes its type from the REFIID input paired with it.  A
+     * canonical method's slots are answered into the reply refs. */
+
+    if (cmd_flags & NPT_CMD_FLAG_REPLY) {
+        if (!npt_cs_decoder_get_fatal(ctx->decoder)) {
+            if (npt_cs_encoder_acquire(ctx->encoder)) {
+                npt_encode_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes_reply(ctx->encoder, &args);
                 npt_cs_encoder_release(ctx->encoder);
             }
         }

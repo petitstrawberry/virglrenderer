@@ -154,6 +154,7 @@ npt_decode_IDXGISurface_Unmap_args_temp(struct npt_cs_decoder *dec,
                                         struct npt_command_IDXGISurface_Unmap *args)
 {
     /* Decode input parameters from the wire */
+
     /* Allocate temp storage for output-only parameters */
 }
 
@@ -543,9 +544,13 @@ npt_decode_IDXGISurface2_GetResource_args_temp(struct npt_cs_decoder *dec,
         uint64_t _gid;
         npt_decode_uint64_t(dec, &_gid);
         args->_guest_id_ppParentResource = _gid;
-        args->ppParentResource = npt_cs_decoder_alloc_temp(dec, sizeof(void *));
-        if (!args->ppParentResource) return;
-        *args->ppParentResource = NULL;
+        if (_gid) {
+            args->ppParentResource = npt_cs_decoder_alloc_temp(dec, sizeof(void *));
+            if (!args->ppParentResource) return;
+            *args->ppParentResource = NULL;
+        } else {
+            args->ppParentResource = NULL;
+        }
     }
 
     /* Allocate temp storage for output-only parameters */

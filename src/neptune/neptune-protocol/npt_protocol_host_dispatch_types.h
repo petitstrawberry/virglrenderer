@@ -726,6 +726,7 @@ struct npt_command_ID3D12WorkGraphProperties_GetEntrypointID;
 struct npt_command_ID3D12WorkGraphProperties_GetEntrypointIndex;
 struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordSizeInBytes;
 struct npt_command_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements;
+struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes;
 struct npt_command_ID3D12Device5_CreateLifetimeTracker;
 struct npt_command_ID3D12Device5_RemoveDevice;
 struct npt_command_ID3D12Device5_EnumerateMetaCommands;
@@ -1534,6 +1535,7 @@ typedef D3D12_NODE_ID * (NPT_STDMETHODCALLTYPE *PFN_ID3D12WorkGraphProperties_Ge
 typedef UINT (NPT_STDMETHODCALLTYPE *PFN_ID3D12WorkGraphProperties_GetEntrypointIndex)(void *, UINT, D3D12_NODE_ID);
 typedef UINT (NPT_STDMETHODCALLTYPE *PFN_ID3D12WorkGraphProperties_GetEntrypointRecordSizeInBytes)(void *, UINT, UINT);
 typedef void (NPT_STDMETHODCALLTYPE *PFN_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements)(void *, UINT, D3D12_WORK_GRAPH_MEMORY_REQUIREMENTS *);
+typedef UINT (NPT_STDMETHODCALLTYPE *PFN_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes)(void *, UINT, UINT);
 typedef HRESULT (NPT_STDMETHODCALLTYPE *PFN_ID3D12Device5_CreateLifetimeTracker)(void *, ID3D12LifetimeOwner *, const IID *, void **);
 typedef void (NPT_STDMETHODCALLTYPE *PFN_ID3D12Device5_RemoveDevice)(void *);
 typedef HRESULT (NPT_STDMETHODCALLTYPE *PFN_ID3D12Device5_EnumerateMetaCommands)(void *, UINT *, D3D12_META_COMMAND_DESC *);
@@ -4173,6 +4175,9 @@ struct npt_dispatch_id3d12workgraphproperties_overrides {
     void (*GetWorkGraphMemoryRequirements)(struct npt_dispatch_context *ctx,
                                                                     struct npt_command_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements *args,
                                                                     PFN_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements original);
+    UINT (*GetEntrypointRecordAlignmentInBytes)(struct npt_dispatch_context *ctx,
+                                                                              struct npt_command_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes *args,
+                                                                              PFN_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes original);
 };
 
 struct npt_dispatch_id3d12device5_overrides {

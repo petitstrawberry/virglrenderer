@@ -160,6 +160,7 @@ npt_decode_ID3D12StateObjectProperties_GetPipelineStackSize_args_temp(struct npt
                                                                       struct npt_command_ID3D12StateObjectProperties_GetPipelineStackSize *args)
 {
     /* Decode input parameters from the wire */
+
     /* Allocate temp storage for output-only parameters */
 }
 

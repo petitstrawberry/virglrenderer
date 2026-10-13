@@ -14,6 +14,7 @@
 #include "npt_feedback.h"
 #include "npt_renderer.h"
 #include "neptune-protocol/npt_protocol_host_dispatch_types.h"
+#include "neptune-protocol/npt_protocol_transport.h"
 #include "virgl_resource.h"
 
 struct npt_queue;
@@ -76,13 +77,6 @@ struct npt_resource {
    uint32_t pin_count;
    bool zombie;
 };
-
-/* Timelines (virtio ring_idx values) per context, and where the event
- * partition starts.  The guest derives the same base from the timeline
- * count it negotiates (npt_renderer_event_ring_base), so both sides keep
- * the split as count / 2. */
-#define NPT_MAX_TIMELINES 64u
-#define NPT_EVENT_RING_BASE (NPT_MAX_TIMELINES / 2)
 
 struct npt_context {
    uint32_t ctx_id;
@@ -236,7 +230,6 @@ struct npt_context {
 
    struct list_head head;
 };
-
 
 struct npt_context *
 npt_context_create(uint32_t ctx_id,

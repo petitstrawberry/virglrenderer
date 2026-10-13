@@ -4033,6 +4033,9 @@ npt_dispatch_ID3D12WorkGraphProperties_method(struct npt_dispatch_context *ctx,
     case 11:
         npt_dispatch_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements(ctx, cmd_flags, object_id);
         break;
+    case 12:
+        npt_dispatch_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes(ctx, cmd_flags, object_id);
+        break;
     default:
         npt_cs_decoder_set_fatal(ctx->decoder);
         break;
@@ -5403,8 +5406,26 @@ npt_dispatch_toplevel(struct npt_dispatch_context *ctx,
 static inline void
 npt_dispatch_command(struct npt_dispatch_context *ctx)
 {
+    struct npt_cs_decoder *const _dec = ctx->decoder;
+    const uint8_t *const _start = _dec->cur;
+    const uint8_t *const _stream_end = _dec->end;
     struct npt_command_header _hdr;
-    npt_cs_decoder_read(ctx->decoder, sizeof(_hdr), &_hdr, sizeof(_hdr));
+    npt_cs_decoder_read(_dec, sizeof(_hdr), &_hdr, sizeof(_hdr));
+    if (npt_cs_decoder_get_fatal(_dec))
+        return;
+
+    /* cmd_size is authoritative: the command decodes inside its own
+     * bytes, and the next one starts at cmd_size whatever the decoder
+     * consumed, so a sender's sizing slip cannot turn the rest of this
+     * command into the next one's header. */
+    if (_hdr.cmd_size < sizeof(_hdr) ||
+        _hdr.cmd_size > (size_t)(_stream_end - _start)) {
+        npt_log("dispatch: cmd_size %u out of range for cmd_type=0x%08x",
+                (unsigned)_hdr.cmd_size, (unsigned)_hdr.cmd_type);
+        npt_cs_decoder_set_fatal(_dec);
+        return;
+    }
+    _dec->end = _start + _hdr.cmd_size;
 
     const uint32_t _group = (_hdr.cmd_type >> 24) & 0xFF;
 
@@ -5423,7 +5444,10 @@ npt_dispatch_command(struct npt_dispatch_context *ctx)
         npt_cs_decoder_set_fatal(ctx->decoder);
     }
 
-    if (npt_cs_decoder_get_fatal(ctx->decoder))
+    _dec->cur = _start + _hdr.cmd_size;
+    _dec->end = _stream_end;
+
+    if (npt_cs_decoder_get_fatal(_dec))
         npt_log("dispatch error for cmd_type=0x%08x", _hdr.cmd_type);
 }
 

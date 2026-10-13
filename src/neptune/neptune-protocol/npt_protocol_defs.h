@@ -1781,6 +1781,7 @@ static const GUID NPT_IID_IUnknown = {
 #define NPT_METHOD_ID3D12WorkGraphProperties_GetEntrypointIndex  9
 #define NPT_METHOD_ID3D12WorkGraphProperties_GetEntrypointRecordSizeInBytes  10
 #define NPT_METHOD_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements  11
+#define NPT_METHOD_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes  12
 #define NPT_METHOD_ID3D12Device5_CreateLifetimeTracker  0
 #define NPT_METHOD_ID3D12Device5_RemoveDevice  1
 #define NPT_METHOD_ID3D12Device5_EnumerateMetaCommands  2
@@ -2586,6 +2587,7 @@ static const GUID NPT_IID_IUnknown = {
 #define NPT_VTBL_ID3D12WorkGraphProperties_GetEntrypointIndex  12
 #define NPT_VTBL_ID3D12WorkGraphProperties_GetEntrypointRecordSizeInBytes  13
 #define NPT_VTBL_ID3D12WorkGraphProperties_GetWorkGraphMemoryRequirements  14
+#define NPT_VTBL_ID3D12WorkGraphProperties_GetEntrypointRecordAlignmentInBytes  15
 #define NPT_VTBL_ID3D12Device5_CreateLifetimeTracker  57
 #define NPT_VTBL_ID3D12Device5_RemoveDevice  58
 #define NPT_VTBL_ID3D12Device5_EnumerateMetaCommands  59
