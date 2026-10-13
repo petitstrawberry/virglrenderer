@@ -17,7 +17,7 @@
 #include "npt_com.h"
 #include "npt_context.h"
 #include "npt_library.h"
-#include "npt_transport_defs.h"
+#include "neptune-protocol/npt_protocol_transport.h"
 
 #include "neptune-protocol/npt_protocol_host_dispatch_types.h"
 #include "neptune-protocol/npt_protocol_host_id3d12resource.h"

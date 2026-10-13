@@ -8,7 +8,7 @@
 #include "npt_context.h"
 #include "npt_library.h"
 #include "npt_renderer.h"
-#include "npt_transport_defs.h"
+#include "neptune-protocol/npt_protocol_transport.h"
 
 #include "util/hash_table.h"
 #include "util/list.h"

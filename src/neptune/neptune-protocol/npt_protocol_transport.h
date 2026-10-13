@@ -6,13 +6,16 @@
  * covered by the protocol generator; the wire format reuses
  * npt_command_header and bodies are cast-directly C structs.
  *
+ * Hand-written and shipped verbatim beside the generated headers, so the
+ * guest and the host compile the same definitions.
+ *
  * cmd_type layout for group 0: bits 23:16 = subgroup id, bits 15:0 =
  * method id within the subgroup. */
 
-#ifndef NPT_TRANSPORT_DEFS_H
-#define NPT_TRANSPORT_DEFS_H
+#ifndef NPT_PROTOCOL_TRANSPORT_H
+#define NPT_PROTOCOL_TRANSPORT_H
 
-#include "neptune-protocol/npt_protocol_defs.h"
+#include "npt_protocol_defs.h"
 
 #define NPT_TRANSPORT_GROUP 0u
 
@@ -649,4 +652,4 @@ struct npt_cmd_register_fence_feedback {
    uint32_t pad;
 };
 
-#endif /* NPT_TRANSPORT_DEFS_H */
+#endif /* NPT_PROTOCOL_TRANSPORT_H */

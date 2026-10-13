@@ -18,7 +18,7 @@
 #include "npt_resource.h"
 #include "npt_ring.h"
 #include "npt_shared.h"
-#include "npt_transport_defs.h"
+#include "neptune-protocol/npt_protocol_transport.h"
 #include "neptune-protocol/npt_protocol_host_dispatch.h"
 
 /* True when the decoder belongs to a ring, not the context.
