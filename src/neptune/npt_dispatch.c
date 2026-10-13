@@ -302,7 +302,7 @@ npt_dispatch_arm_event_fence(struct npt_context *ctx,
    if (npt_cs_decoder_get_fatal(dec))
       return;
 
-   bool ok = npt_event_arm(ctx, cmd.event_token, cmd.ring_idx, cmd.flags);
+   bool ok = npt_event_arm(ctx, cmd.event_token, cmd.ring_idx);
    if (!ok)
       npt_event_drain_parked_ring(ctx, cmd.ring_idx);
 
