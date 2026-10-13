@@ -27,6 +27,7 @@
 struct hash_table;
 struct npt_context;
 struct npt_resource;
+struct npt_ring;
 
 /* ================================================================== */
 /* Substrate                                                           */
@@ -51,6 +52,9 @@ enum npt_feedback_type {
  *   host_obj    Cached host-library COM pointer.  Resolved lazily on
  *               first per-type lifecycle op.
  *   host_ctx    Queries: cached ID3D11DeviceContext; fences: unused.
+ *   poll_ring   Queries only: the ring that decoded End on the immediate
+ *               context, the only thread allowed to call GetData on it;
+ *               NULL when any polling thread may.
  *   cookie      Type-specific scalar.  Queries: query_data_size bytes.
  *               Fences: unused.
  *   version     Queries only: monotonic per-Begin counter stamped
@@ -85,6 +89,7 @@ struct npt_feedback_entry {
 
    void    *host_obj;
    void    *host_ctx;
+   const struct npt_ring *poll_ring;
 
    uint32_t cookie;
    uint32_t version;

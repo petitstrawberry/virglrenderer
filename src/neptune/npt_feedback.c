@@ -20,6 +20,7 @@
 #include "npt_context.h"
 #include "npt_profile.h"
 #include "npt_renderer.h"
+#include "npt_ring.h"
 #include "neptune-protocol/npt_protocol_transport.h"
 #include "virgl_resource.h"
 
@@ -165,6 +166,7 @@ npt_feedback_register_locked(struct npt_context *ctx,
       entry->slot_size = slot_size;
       entry->host_obj = NULL;
       entry->host_ctx = NULL;
+      entry->poll_ring = NULL;
       entry->cookie = 0;
       entry->version = 0;
       entry->target_value = 0;
@@ -313,6 +315,10 @@ npt_feedback_query_poll_one(struct npt_context *ctx,
 {
    if (!entry->host_ctx || !entry->host_obj)
       return false;
+   /* The immediate context is not free-threaded: with several rings,
+    * GetData from any ring but the one issuing its calls races them. */
+   if (entry->poll_ring && entry->poll_ring != npt_ring_current())
+      return false;
    if (!entry->fb_res_id || !entry->cookie /* query_data_size */)
       return false;
    if (entry->cookie > NPT_QUERY_FEEDBACK_SLOT_RESULT)
@@ -442,6 +448,8 @@ npt_feedback_query_mark_end(struct npt_context *ctx,
    if (match) {
       if (!match->host_ctx)
          match->host_ctx = npt_feedback_query_poll_ctx(host_ctx);
+      match->poll_ring = match->host_ctx == host_ctx ? npt_ring_current()
+                                                     : NULL;
       /* The version counts Ends, in lockstep with the guest, which
        * bumps its own count before sending each End.  The poll stamps
        * this on the result, so a result for an earlier End can never
