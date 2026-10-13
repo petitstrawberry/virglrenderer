@@ -84,10 +84,12 @@ struct npt_dxil_semantic {
 typedef int (*PFN_npt_lib_dxil_input_semantics)(
    const void *container, size_t size, struct npt_dxil_semantic *out, int cap);
 
-/* dxmt_native.h: guest-shared DYNAMIC buffer storage. */
-typedef int32_t (*PFN_npt_lib_dxmt_d3d11_buffer_bind_external_fd)(
+/* Guest-shared DYNAMIC buffer storage: dxmt_native.h on darwin, where
+ * the fd is the blob's own; dxvk_external_buffer.h on Linux, where it is
+ * a dmabuf of the blob. */
+typedef int32_t (*PFN_npt_lib_d3d11_buffer_bind_external_fd)(
    void *buffer, int fd, uint64_t backing_length, uint32_t cookie);
-typedef int (*PFN_npt_lib_dxmt_d3d11_buffer_external_cookie)(
+typedef int (*PFN_npt_lib_d3d11_buffer_external_cookie)(
    void *buffer, void *mapped_ptr, uint32_t *out_cookie);
 
 struct npt_d3d_library {
@@ -116,9 +118,10 @@ struct npt_d3d_library {
    /* Optional, darwin: same contract as the vkd3d dmabuf twin below.
     * NULL => CREATE_HEAP_FROM_SHMEM fails cleanly (sync-map fallback). */
    PFN_npt_lib_darwin_open_existing_heap_from_fd pfn_darwin_open_existing_heap_from_fd;
-   /* DXMT only; NULL => RESOURCE_BIND_D3D11_BUFFER_SHMEM is E_NOTIMPL. */
-   PFN_npt_lib_dxmt_d3d11_buffer_bind_external_fd pfn_dxmt_d3d11_buffer_bind_external_fd;
-   PFN_npt_lib_dxmt_d3d11_buffer_external_cookie pfn_dxmt_d3d11_buffer_external_cookie;
+   /* DXMT or dxvk; NULL => RESOURCE_BIND_D3D11_BUFFER_SHMEM is
+    * E_NOTIMPL. */
+   PFN_npt_lib_d3d11_buffer_bind_external_fd pfn_d3d11_buffer_bind_external_fd;
+   PFN_npt_lib_d3d11_buffer_external_cookie pfn_d3d11_buffer_external_cookie;
    /* Optional: DXIL input-signature reflection, which resolves the guest's
     * register-tagged input-layout placeholders (npt_overrides_d3d12_pso.c).
     * NULL => DXIL vertex-shader pipelines reach the backend with the
