@@ -139,8 +139,24 @@ struct npt_dispatch_id3d11device1_overrides npt_id3d11device1_overrides = {
    .OpenSharedResourceByName = reject_ID3D11Device1_OpenSharedResourceByName,
 };
 
+/* No fence can be exported (CreateSharedHandle is rejected), so SHARED
+ * would only make the backend set up export machinery for nothing. */
+static HRESULT
+npt_override_ID3D11Device5_CreateFence(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D11Device5_CreateFence *args,
+   PFN_ID3D11Device5_CreateFence original)
+{
+   args->ret = original(args->_self, args->InitialValue,
+                        (D3D11_FENCE_FLAG)(args->Flags &
+                                           ~D3D11_FENCE_FLAG_SHARED),
+                        args->ReturnedInterface, args->ppFence);
+   return args->ret;
+}
+
 struct npt_dispatch_id3d11device5_overrides npt_id3d11device5_overrides = {
    .OpenSharedFence = reject_ID3D11Device5_OpenSharedFence,
+   .CreateFence = npt_override_ID3D11Device5_CreateFence,
 };
 
 struct npt_dispatch_id3d11fence_overrides npt_id3d11fence_overrides = {

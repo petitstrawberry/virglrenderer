@@ -104,7 +104,8 @@ npt_heap12_import_available(const struct npt_d3d_library *lib)
 }
 
 /* No udmabuf to carve the window with, so the whole blob's fd travels
- * with an explicit offset. */
+ * with an explicit offset.  SHARED is dropped as on CreateHeap: the guest
+ * can never export the heap. */
 static HRESULT
 npt_heap12_import(const struct npt_d3d_library *lib, void *device,
                   const struct npt_resource *res,
@@ -112,8 +113,9 @@ npt_heap12_import(const struct npt_d3d_library *lib, void *device,
                   void **out_heap)
 {
    return lib->pfn_darwin_open_existing_heap_from_fd(
-      device, res->u.fd, cmd->shmem_offset, cmd->size,
-      cmd->heap_type, cmd->heap_flags, &NPT_IID_ID3D12Heap, out_heap);
+      device, res->u.fd, cmd->shmem_offset, cmd->size, cmd->heap_type,
+      cmd->heap_flags & ~(uint32_t)D3D12_HEAP_FLAG_SHARED,
+      &NPT_IID_ID3D12Heap, out_heap);
 }
 #else
 static bool

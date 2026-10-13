@@ -103,9 +103,156 @@ npt_override_ID3D12Device_CheckFeatureSupport(
    return args->ret;
 }
 
+/* The guest can never export a fence or a heap -- every shared-HANDLE
+ * entry point above is rejected -- so their SHARED flags only make a
+ * backend build export machinery for nothing (d3dmetal-native backs a
+ * SHARED heap with impostor textures and a SHARED fence with a producer
+ * that runs on every Signal).  The guest answers the flag back itself
+ * where the API reports it. */
+#define NPT_D3D12_FENCE_SHARE_FLAGS \
+   (D3D12_FENCE_FLAG_SHARED | D3D12_FENCE_FLAG_SHARED_CROSS_ADAPTER)
+
+/* vkd3d-proton's private heap flag, set by the guest on presentable
+ * resources so a Linux host exports them as linear dma-bufs.  It is not
+ * a D3D12_HEAP_FLAGS value, and the darwin backend validates against
+ * the real ones. */
+#define NPT_D3D12_HEAP_FLAG_EXPORT_LINEAR_DMABUF ((D3D12_HEAP_FLAGS)0x40000000)
+
+static D3D12_HEAP_FLAGS
+npt_backend_resource_heap_flags(D3D12_HEAP_FLAGS flags)
+{
+#ifdef __APPLE__
+   flags &= ~NPT_D3D12_HEAP_FLAG_EXPORT_LINEAR_DMABUF;
+#endif
+   return flags;
+}
+
+static HRESULT
+npt_override_ID3D12Device_CreateFence(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device_CreateFence *args,
+   PFN_ID3D12Device_CreateFence original)
+{
+   args->ret = original(args->_self, args->InitialValue,
+                        args->Flags & ~NPT_D3D12_FENCE_SHARE_FLAGS,
+                        args->riid, args->ppFence);
+   return args->ret;
+}
+
+static HRESULT
+npt_override_ID3D12Device_CreateHeap(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device_CreateHeap *args,
+   PFN_ID3D12Device_CreateHeap original)
+{
+   D3D12_HEAP_DESC desc;
+   const D3D12_HEAP_DESC *pdesc = args->pDesc;
+   if (pdesc) {
+      desc = *pdesc;
+      desc.Flags &= ~D3D12_HEAP_FLAG_SHARED;
+      pdesc = &desc;
+   }
+   args->ret = original(args->_self, pdesc, args->riid, args->ppvHeap);
+   return args->ret;
+}
+
+static HRESULT
+npt_override_ID3D12Device4_CreateHeap1(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device4_CreateHeap1 *args,
+   PFN_ID3D12Device4_CreateHeap1 original)
+{
+   D3D12_HEAP_DESC desc;
+   const D3D12_HEAP_DESC *pdesc = args->pDesc;
+   if (pdesc) {
+      desc = *pdesc;
+      desc.Flags &= ~D3D12_HEAP_FLAG_SHARED;
+      pdesc = &desc;
+   }
+   args->ret = original(args->_self, pdesc, args->pProtectedSession,
+                        args->riid, args->ppvHeap);
+   return args->ret;
+}
+
+static HRESULT
+npt_override_ID3D12Device_CreateCommittedResource(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device_CreateCommittedResource *args,
+   PFN_ID3D12Device_CreateCommittedResource original)
+{
+   args->ret = original(args->_self, args->pHeapProperties,
+                        npt_backend_resource_heap_flags(args->HeapFlags),
+                        args->pDesc, args->InitialResourceState,
+                        args->pOptimizedClearValue, args->riidResource,
+                        args->ppvResource);
+   return args->ret;
+}
+
+static HRESULT
+npt_override_ID3D12Device4_CreateCommittedResource1(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device4_CreateCommittedResource1 *args,
+   PFN_ID3D12Device4_CreateCommittedResource1 original)
+{
+   args->ret = original(args->_self, args->pHeapProperties,
+                        npt_backend_resource_heap_flags(args->HeapFlags),
+                        args->pDesc, args->InitialResourceState,
+                        args->pOptimizedClearValue, args->pProtectedSession,
+                        args->riidResource, args->ppvResource);
+   return args->ret;
+}
+
+static HRESULT
+npt_override_ID3D12Device8_CreateCommittedResource2(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device8_CreateCommittedResource2 *args,
+   PFN_ID3D12Device8_CreateCommittedResource2 original)
+{
+   args->ret = original(args->_self, args->pHeapProperties,
+                        npt_backend_resource_heap_flags(args->HeapFlags),
+                        args->pDesc, args->InitialResourceState,
+                        args->pOptimizedClearValue, args->pProtectedSession,
+                        args->riidResource, args->ppvResource);
+   return args->ret;
+}
+
+static HRESULT
+npt_override_ID3D12Device10_CreateCommittedResource3(
+   UNUSED struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device10_CreateCommittedResource3 *args,
+   PFN_ID3D12Device10_CreateCommittedResource3 original)
+{
+   args->ret = original(args->_self, args->pHeapProperties,
+                        npt_backend_resource_heap_flags(args->HeapFlags),
+                        args->pDesc, args->InitialLayout,
+                        args->pOptimizedClearValue, args->pProtectedSession,
+                        args->NumCastableFormats, args->pCastableFormats,
+                        args->riidResource, args->ppvResource);
+   return args->ret;
+}
+
 struct npt_dispatch_id3d12device_overrides npt_id3d12device_overrides = {
+   .CreateFence = npt_override_ID3D12Device_CreateFence,
+   .CreateHeap = npt_override_ID3D12Device_CreateHeap,
+   .CreateCommittedResource = npt_override_ID3D12Device_CreateCommittedResource,
    .CreateSharedHandle = reject_ID3D12Device_CreateSharedHandle,
    .OpenSharedHandle = reject_ID3D12Device_OpenSharedHandle,
    .OpenSharedHandleByName = reject_ID3D12Device_OpenSharedHandleByName,
    .CheckFeatureSupport = npt_override_ID3D12Device_CheckFeatureSupport,
+};
+
+struct npt_dispatch_id3d12device4_overrides npt_id3d12device4_overrides = {
+   .CreateHeap1 = npt_override_ID3D12Device4_CreateHeap1,
+   .CreateCommittedResource1 =
+      npt_override_ID3D12Device4_CreateCommittedResource1,
+};
+
+struct npt_dispatch_id3d12device8_overrides npt_id3d12device8_overrides = {
+   .CreateCommittedResource2 =
+      npt_override_ID3D12Device8_CreateCommittedResource2,
+};
+
+struct npt_dispatch_id3d12device10_overrides npt_id3d12device10_overrides = {
+   .CreateCommittedResource3 =
+      npt_override_ID3D12Device10_CreateCommittedResource3,
 };

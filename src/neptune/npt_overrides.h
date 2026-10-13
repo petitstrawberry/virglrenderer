@@ -41,4 +41,10 @@ extern struct npt_dispatch_id3d12commandqueue_overrides
 extern struct npt_dispatch_id3d12fence_overrides
    npt_id3d12fence_overrides;
 
+/* Later ID3D12Device tiers' creates, with the share and backend flags
+ * stripped (npt_overrides_d3d12_device.c). */
+extern struct npt_dispatch_id3d12device4_overrides npt_id3d12device4_overrides;
+extern struct npt_dispatch_id3d12device8_overrides npt_id3d12device8_overrides;
+extern struct npt_dispatch_id3d12device10_overrides npt_id3d12device10_overrides;
+
 #endif /* NPT_OVERRIDES_H */
