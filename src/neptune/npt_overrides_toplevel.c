@@ -19,20 +19,24 @@
 /* DXGI factory creation                                                */
 /* ================================================================== */
 
+/* CreateDXGIFactory, CreateDXGIFactory1 and CreateDXGIFactory2 all
+ * return the same factory; collapse onto CreateDXGIFactory1, the one
+ * entry point the library loader resolves.  CreateDXGIFactory2's flags
+ * only ask for the debug layer. */
+static HRESULT
+npt_create_dxgi_factory(const IID *riid, void **ppFactory)
+{
+   struct npt_d3d_library *lib = npt_renderer_get_library();
+   if (!lib || !lib->pfn_CreateDXGIFactory1)
+      return NPT_E_FAIL;
+   return lib->pfn_CreateDXGIFactory1(riid, ppFactory);
+}
+
 static HRESULT
 npt_override_CreateDXGIFactory(UNUSED struct npt_dispatch_context *dctx,
                                struct npt_command_CreateDXGIFactory *args)
 {
-   struct npt_d3d_library *lib = npt_renderer_get_library();
-   if (!lib || !lib->pfn_CreateDXGIFactory1) {
-      args->ret = NPT_E_FAIL;
-      return args->ret;
-   }
-
-   /* CreateDXGIFactory and CreateDXGIFactory1 both return
-    * IDXGIFactory*; collapse onto CreateDXGIFactory1 for a single
-    * entry point. */
-   args->ret = lib->pfn_CreateDXGIFactory1(args->riid, args->ppFactory);
+   args->ret = npt_create_dxgi_factory(args->riid, args->ppFactory);
    return args->ret;
 }
 
@@ -40,12 +44,7 @@ static HRESULT
 npt_override_CreateDXGIFactory1(UNUSED struct npt_dispatch_context *dctx,
                                 struct npt_command_CreateDXGIFactory1 *args)
 {
-   struct npt_d3d_library *lib = npt_renderer_get_library();
-   if (!lib || !lib->pfn_CreateDXGIFactory1) {
-      args->ret = NPT_E_FAIL;
-      return args->ret;
-   }
-   args->ret = lib->pfn_CreateDXGIFactory1(args->riid, args->ppFactory);
+   args->ret = npt_create_dxgi_factory(args->riid, args->ppFactory);
    return args->ret;
 }
 
@@ -53,13 +52,7 @@ static HRESULT
 npt_override_CreateDXGIFactory2(UNUSED struct npt_dispatch_context *dctx,
                                 struct npt_command_CreateDXGIFactory2 *args)
 {
-   struct npt_d3d_library *lib = npt_renderer_get_library();
-   if (!lib || !lib->pfn_CreateDXGIFactory1) {
-      args->ret = NPT_E_FAIL;
-      return args->ret;
-   }
-   /* Flags ignored: CreateDXGIFactory1 has none and we collapse onto it. */
-   args->ret = lib->pfn_CreateDXGIFactory1(args->riid, args->ppFactory);
+   args->ret = npt_create_dxgi_factory(args->riid, args->ppFactory);
    return args->ret;
 }
 
@@ -152,7 +145,7 @@ npt_override_D3D12CreateVersionedRootSignatureDeserializer(
 }
 
 /* ID3DBlob accessors via raw vtable slots (3 = GetBufferPointer,
- * 4 = GetBufferSize, 2 = Release; see NPT_VTBL_ID3D10Blob_*). */
+ * 4 = GetBufferSize; see NPT_VTBL_ID3D10Blob_*). */
 typedef void *(NPT_STDMETHODCALLTYPE *pfn_npt_blob_get_pointer)(void *self);
 typedef SIZE_T (NPT_STDMETHODCALLTYPE *pfn_npt_blob_get_size)(void *self);
 
@@ -199,16 +192,6 @@ npt_blob_copy_out(ID3DBlob *blob, UINT *size_inout, void **data_inout)
 }
 
 static void
-npt_blob_release(ID3DBlob *blob)
-{
-   if (!blob)
-      return;
-   PFN_IUnknown_Release fn = NPT_COM_VTBL_FUNC(
-      PFN_IUnknown_Release, npt_com_vtable(blob), 2);
-   fn(blob);
-}
-
-static void
 npt_serialize_clear_sizes(UINT *blob_size, UINT *error_size)
 {
    if (blob_size)
@@ -236,8 +219,10 @@ npt_serialize_finish(HRESULT hr, ID3DBlob *blob, ID3DBlob *error_blob,
       *blob_data = NULL;
    }
 
-   npt_blob_release(blob);
-   npt_blob_release(error_blob);
+   if (blob)
+      npt_com_release(blob);
+   if (error_blob)
+      npt_com_release(error_blob);
    return hr;
 }
 
