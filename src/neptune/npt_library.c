@@ -13,7 +13,6 @@
 #ifdef HAVE_DLFCN_H
 #include <dlfcn.h>
 #endif
-#include <stdio.h>
 
 /* Env-var names and library-name defaults live in npt_library_names.h
  * (shared with the npt_renderer.c D3D12 capset probe). */
@@ -153,7 +152,7 @@ npt_library_init(struct npt_d3d_library *lib)
    setenv("DXVK_WSI_DRIVER", "Headless", 0);
 #endif
 
-   lib->d3d11_module = npt_library_open("NPT_D3D11_LIBRARY_PATH",
+   lib->d3d11_module = npt_library_open(NPT_D3D11_LIBRARY_ENV,
                                          NPT_D3D11_LIBRARY_DEFAULT);
    if (lib->d3d11_module) {
       lib->pfn_D3D11CreateDevice =
@@ -174,7 +173,7 @@ npt_library_init(struct npt_d3d_library *lib)
       }
    }
 
-   lib->dxgi_module = npt_library_open("NPT_DXGI_LIBRARY_PATH",
+   lib->dxgi_module = npt_library_open(NPT_DXGI_LIBRARY_ENV,
                                         NPT_DXGI_LIBRARY_DEFAULT);
    if (lib->dxgi_module) {
       lib->pfn_CreateDXGIFactory1 =
@@ -188,6 +187,7 @@ npt_library_init(struct npt_d3d_library *lib)
       }
    }
 
+#ifndef __APPLE__
    /* Persistently-mapped UPLOAD/READBACK heaps hand the guest's SHM
     * pages straight to the app, so vkd3d falling back to a private
     * allocation on a failed host import would silently make the GPU read
@@ -210,8 +210,9 @@ npt_library_init(struct npt_d3d_library *lib)
          }
       }
    }
+#endif
 
-   lib->d3d12_module = npt_library_open("NPT_D3D12_LIBRARY_PATH",
+   lib->d3d12_module = npt_library_open(NPT_D3D12_LIBRARY_ENV,
                                          NPT_D3D12_LIBRARY_DEFAULT);
    if (lib->d3d12_module) {
       lib->pfn_D3D12CreateDevice =
@@ -247,15 +248,15 @@ npt_library_init(struct npt_d3d_library *lib)
    }
 
    if (lib->d3d11_module) {
-      const char *p = getenv("NPT_D3D11_LIBRARY_PATH");
+      const char *p = getenv(NPT_D3D11_LIBRARY_ENV);
       npt_log("loaded D3D11 library: %s", p ? p : NPT_D3D11_LIBRARY_DEFAULT);
    }
    if (lib->dxgi_module) {
-      const char *p = getenv("NPT_DXGI_LIBRARY_PATH");
+      const char *p = getenv(NPT_DXGI_LIBRARY_ENV);
       npt_log("loaded DXGI library: %s", p ? p : NPT_DXGI_LIBRARY_DEFAULT);
    }
    if (lib->d3d12_module) {
-      const char *p = getenv("NPT_D3D12_LIBRARY_PATH");
+      const char *p = getenv(NPT_D3D12_LIBRARY_ENV);
       npt_log("loaded D3D12 library: %s", p ? p : NPT_D3D12_LIBRARY_DEFAULT);
    }
 
