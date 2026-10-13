@@ -231,7 +231,8 @@ npt_dispatch_resource_update(struct npt_context *ctx,
          return;
    }
 
-   npt_resource_update(ctx, header->object_id, cmd.subresource,
+   npt_resource_update(ctx, cmd.context_id, header->object_id,
+                       cmd.subresource,
                        cmd.row_pitch, cmd.depth_pitch, cmd.byte_size,
                        !!cmd.has_box,
                        cmd.box_left, cmd.box_top, cmd.box_front,
