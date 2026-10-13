@@ -594,14 +594,9 @@ npt_ring_thread(void *arg)
             }
          }
 
-         /* Drain pending feedback while idle.  The host D3D11
-          * context is single-threaded — interleaving feedback polls
-          * with batched draws would break the host driver, so the
-          * poll has to land in the idle gap.  Idle polls use the
-          * short interval: nothing is being decoded, so the only
-          * cost is the poll itself, and this is what bounds guest
-          * GetCompletedValue latency on a quiet ring. */
-         npt_feedback_poll_interval(ctx, NPT_FEEDBACK_POLL_IDLE_INTERVAL_NS);
+         /* Drain pending feedback while idle: this is what bounds
+          * guest GetCompletedValue latency on a quiet ring. */
+         npt_feedback_poll_interval(ctx, NPT_FEEDBACK_POLL_INTERVAL_NS);
 
          /* Cap relax_iter while feedback is pending: GPU execution
           * of a queued Signal lags by ms, so longer sleeps would

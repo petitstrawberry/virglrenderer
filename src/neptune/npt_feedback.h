@@ -180,12 +180,10 @@ npt_feedback_slot_ptr(struct npt_resource *res,
 
 /* The poll interval is the resolution of every value the guest reads
  * out of a feedback slot, so it directly quantizes the app's
- * Signal-to-GetCompletedValue latency.  The same interval is used
- * mid-stream and idle: publishing promptly during decode releases the
- * app's pacing waits earlier, which is worth more than the poll costs
- * the decode thread. */
-#define NPT_FEEDBACK_POLL_INTERVAL_NS      (100000ull)
-#define NPT_FEEDBACK_POLL_IDLE_INTERVAL_NS (100000ull)
+ * Signal-to-GetCompletedValue latency.  It is used mid-stream as well as
+ * idle: publishing promptly during decode releases the app's pacing waits
+ * earlier, which is worth more than the poll costs the decode thread. */
+#define NPT_FEEDBACK_POLL_INTERVAL_NS (100000ull)
 
 /* How many decoded commands may pass between deadline checks on the
  * mid-stream path.  The poll runs after every command and commands
@@ -204,8 +202,8 @@ npt_feedback_slot_ptr(struct npt_resource *res,
  * command. */
 void npt_feedback_poll(struct npt_context *ctx, uint32_t *skip);
 
-/* Same, but with an explicit rate-limit -- the ring thread's idle loop
- * passes NPT_FEEDBACK_POLL_IDLE_INTERVAL_NS. */
+/* Same, but with an explicit rate-limit and no command countdown -- the
+ * ring thread's idle loop passes NPT_FEEDBACK_POLL_INTERVAL_NS. */
 void npt_feedback_poll_interval(struct npt_context *ctx,
                                 uint64_t min_interval_ns);
 
