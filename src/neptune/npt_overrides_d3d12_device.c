@@ -239,6 +239,8 @@ struct npt_dispatch_id3d12device_overrides npt_id3d12device_overrides = {
    .OpenSharedHandle = reject_ID3D12Device_OpenSharedHandle,
    .OpenSharedHandleByName = reject_ID3D12Device_OpenSharedHandleByName,
    .CheckFeatureSupport = npt_override_ID3D12Device_CheckFeatureSupport,
+   .CreateGraphicsPipelineState =
+      npt_override_ID3D12Device_CreateGraphicsPipelineState,
 };
 
 struct npt_dispatch_id3d12device4_overrides npt_id3d12device4_overrides = {

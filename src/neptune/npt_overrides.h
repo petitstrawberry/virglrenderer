@@ -25,6 +25,14 @@ extern struct npt_dispatch_id3d11fence_overrides npt_id3d11fence_overrides;
  * repack (npt_overrides_d3d12_device.c). */
 extern struct npt_dispatch_id3d12device_overrides npt_id3d12device_overrides;
 
+/* DXIL input-layout placeholder resolution (npt_overrides_d3d12_pso.c),
+ * installed in npt_id3d12device_overrides. */
+HRESULT
+npt_override_ID3D12Device_CreateGraphicsPipelineState(
+   struct npt_dispatch_context *ctx,
+   struct npt_command_ID3D12Device_CreateGraphicsPipelineState *args,
+   PFN_ID3D12Device_CreateGraphicsPipelineState original);
+
 /* Hooks Begin/End on the immediate context to maintain the per-query
  * pending list. */
 extern struct npt_dispatch_id3d11devicecontext_overrides

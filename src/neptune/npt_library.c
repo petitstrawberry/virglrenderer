@@ -115,6 +115,12 @@ npt_library_load_embedder_api(struct npt_d3d_library *lib)
                    PFN_npt_lib_darwin_open_existing_heap_from_fd f; }){
             .p = npt_library_sym(mod, name) }).f;
 
+      snprintf(name, sizeof(name), "%sdxil_input_semantics",
+               candidates[i].prefix);
+      lib->pfn_dxil_input_semantics =
+         ((union { void *p; PFN_npt_lib_dxil_input_semantics f; }){
+            .p = npt_library_sym(mod, name) }).f;
+
       if (candidates[i].kind == NPT_BACKEND_DXMT) {
          lib->pfn_dxmt_d3d11_buffer_bind_external_fd =
             ((union { void *p;

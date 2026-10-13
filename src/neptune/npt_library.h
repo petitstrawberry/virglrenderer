@@ -71,6 +71,19 @@ typedef HRESULT (*PFN_npt_lib_darwin_open_existing_heap_from_fd)(
    void *device, int fd, uint64_t offset, uint64_t size,
    uint32_t heap_type, uint32_t heap_flags, const GUID *iid, void **heap);
 
+/* One input-signature element of a DXIL vertex shader, as the backend's
+ * reflection reports it.  Layout of d3dmetal-native's dmn_dxil_semantic. */
+struct npt_dxil_semantic {
+   uint32_t reg;    /* input-signature register */
+   uint32_t index;  /* SemanticIndex */
+   char name[64];   /* SemanticName */
+};
+
+/* Fills out[] with the input-signature semantics of a DXIL container and
+ * returns the count written, 0 on failure.  Plain SysV. */
+typedef int (*PFN_npt_lib_dxil_input_semantics)(
+   const void *container, size_t size, struct npt_dxil_semantic *out, int cap);
+
 /* dxmt_native.h: guest-shared DYNAMIC buffer storage. */
 typedef int32_t (*PFN_npt_lib_dxmt_d3d11_buffer_bind_external_fd)(
    void *buffer, int fd, uint64_t backing_length, uint32_t cookie);
@@ -106,6 +119,11 @@ struct npt_d3d_library {
    /* DXMT only; NULL => RESOURCE_BIND_D3D11_BUFFER_SHMEM is E_NOTIMPL. */
    PFN_npt_lib_dxmt_d3d11_buffer_bind_external_fd pfn_dxmt_d3d11_buffer_bind_external_fd;
    PFN_npt_lib_dxmt_d3d11_buffer_external_cookie pfn_dxmt_d3d11_buffer_external_cookie;
+   /* Optional: DXIL input-signature reflection, which resolves the guest's
+    * register-tagged input-layout placeholders (npt_overrides_d3d12_pso.c).
+    * NULL => DXIL vertex-shader pipelines reach the backend with the
+    * placeholder names. */
+   PFN_npt_lib_dxil_input_semantics pfn_dxil_input_semantics;
    enum npt_backend_kind backend;
 
    /* NPT_WA_* bits describing the workarounds the loaded backend needs, set in
