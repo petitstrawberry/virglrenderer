@@ -77,6 +77,13 @@ struct npt_resource {
    bool zombie;
 };
 
+/* Timelines (virtio ring_idx values) per context, and where the event
+ * partition starts.  The guest derives the same base from the timeline
+ * count it negotiates (npt_renderer_event_ring_base), so both sides keep
+ * the split as count / 2. */
+#define NPT_MAX_TIMELINES 64u
+#define NPT_EVENT_RING_BASE (NPT_MAX_TIMELINES / 2)
+
 struct npt_context {
    uint32_t ctx_id;
 
@@ -189,12 +196,9 @@ struct npt_context {
     * Partition:
     *   0                          : CPU timeline
     *   [1, NPT_EVENT_RING_BASE)   : reserved
-    *   [NPT_EVENT_RING_BASE, end) : Win32 event proxies
-    *
-    * NPT_EVENT_RING_BASE must equal (sync_queues count / 2) in
-    * lockstep with the guest driver. */
+    *   [NPT_EVENT_RING_BASE, end) : Win32 event proxies */
    mtx_t sync_queues_mutex;
-   struct npt_queue *sync_queues[64];
+   struct npt_queue *sync_queues[NPT_MAX_TIMELINES];
 
    /* Per-ring gate events for D3D12 monitored-fence gates, kept alive
     * until context teardown so the host D3D library's asynchronous
@@ -233,10 +237,6 @@ struct npt_context {
    struct list_head head;
 };
 
-/* Half of sync_queues[] is reserved rings, half is event proxies.
- * Must be (sizeof sync_queues / sizeof sync_queues[0]) / 2 in lockstep
- * with the guest driver. */
-#define NPT_EVENT_RING_BASE 32u
 
 struct npt_context *
 npt_context_create(uint32_t ctx_id,
