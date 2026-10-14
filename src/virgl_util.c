@@ -32,6 +32,10 @@
 #ifdef HAVE_EVENTFD_H
 #include <sys/eventfd.h>
 #endif
+#ifdef HAVE_KQUEUE
+#include <fcntl.h>
+#include <sys/event.h>
+#endif
 #include <unistd.h>
 
 #include "util/os_misc.h"
@@ -88,7 +92,7 @@ bool equal_func(const void *key1, const void *key2)
 
 bool has_eventfd(void)
 {
-#ifdef HAVE_EVENTFD_H
+#if defined(HAVE_EVENTFD_H) || defined(HAVE_KQUEUE)
    return true;
 #else
    return false;
@@ -99,6 +103,28 @@ int create_eventfd(unsigned int initval)
 {
 #ifdef HAVE_EVENTFD_H
    return eventfd(initval, EFD_CLOEXEC | EFD_NONBLOCK);
+#elif defined(HAVE_KQUEUE)
+   struct kevent change;
+   int fd = kqueue();
+
+   if (fd < 0)
+      return -1;
+
+   if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
+      goto fail;
+
+   EV_SET(&change, 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, NULL);
+   if (kevent(fd, &change, 1, NULL, 0, NULL) < 0)
+      goto fail;
+
+   if (initval && write_eventfd(fd, initval))
+      goto fail;
+
+   return fd;
+
+fail:
+   close(fd);
+   return -1;
 #else
    (void)initval;
    return -1;
@@ -107,6 +133,12 @@ int create_eventfd(unsigned int initval)
 
 int write_eventfd(int fd, uint64_t val)
 {
+#ifdef HAVE_KQUEUE
+   struct kevent change;
+
+   EV_SET(&change, 0, EVFILT_USER, 0, NOTE_TRIGGER, val, NULL);
+   return kevent(fd, &change, 1, NULL, 0, NULL) < 0 ? -1 : 0;
+#else
    const char *buf = (const char *)&val;
    size_t count = sizeof(val);
    ssize_t ret = 0;
@@ -123,15 +155,24 @@ int write_eventfd(int fd, uint64_t val)
    }
 
    return count ? -1 : 0;
+#endif
 }
 
 void flush_eventfd(int fd)
 {
+#ifdef HAVE_KQUEUE
+    struct kevent event;
+    struct timespec timeout = { 0 };
+
+    while (kevent(fd, NULL, 0, &event, 1, &timeout) > 0) {
+    }
+#else
     ssize_t len;
     uint64_t value;
     do {
        len = read(fd, &value, sizeof(value));
     } while ((len == -1 && errno == EINTR) || len == sizeof(value));
+#endif
 }
 
 const struct log_levels_lut {

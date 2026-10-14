@@ -3415,6 +3415,9 @@ int vrend_create_vertex_elements_state(struct vrend_context *ctx,
       v->elements[i].type = type;
       if (desc->channel[0].normalized)
          v->elements[i].norm = GL_TRUE;
+      /* Legacy glVertexAttribIPointer needs integer GLSL inputs too. */
+      UPDATE_INT_SIGN_MASK(elements[i].src_format, i,
+                           v->signed_int_bitmask, v->unsigned_int_bitmask);
       v->elements[i].nr_chan = desc->nr_channels;
 
       if (desc->nr_channels == 4 && desc->swizzle[0] == PIPE_SWIZZLE_Z)
@@ -3765,8 +3768,11 @@ void vrend_set_single_sampler_view(struct vrend_context *ctx,
             offset *= blsize;
             size *= blsize;
             glTexBufferRange(GL_TEXTURE_BUFFER, internalformat, view->texture->gl_id, offset, size);
-         } else
+         } else {
             glTexBuffer(GL_TEXTURE_BUFFER, internalformat, view->texture->gl_id);
+            /* Do not leave the buffer texture bound across later buffer uploads. */
+            glBindTexture(GL_TEXTURE_BUFFER, 0);
+         }
       }
    }
 
@@ -7558,6 +7564,8 @@ static bool use_integer(void) {
    const char * a = (const char *) glGetString(GL_VENDOR);
    if (!a)
        return false;
+   if (strcmp(a, "Apple") == 0)
+      return true;
    if (strcmp(a, "ARM") == 0)
       return true;
    return false;

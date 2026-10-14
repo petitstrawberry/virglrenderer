@@ -84,6 +84,7 @@
 #define SHADER_REQ_SHADER_DRAW_PARAMETERS (1ULL << 39)
 #define SHADER_REQ_SHADER_GROUP_VOTE      (1ULL << 40)
 #define SHADER_REQ_EXPLICIT_UNIFORM_LOCATION (1ULL << 41)
+#define SHADER_REQ_FMA (1ULL << 42)
 
 #define FRONT_COLOR_EMITTED (1 << 0)
 #define BACK_COLOR_EMITTED  (1 << 1);
@@ -5772,6 +5773,17 @@ iter_instruction(struct tgsi_iterate_context *iter,
    case TGSI_OPCODE_SHL:
       emit_arit_op2("<<");
       break;
+   case TGSI_OPCODE_FMA:
+      /* Keep fused semantics: MAD is an ordinary multiply plus add. */
+      if (!ctx->cfg->has_gpu_shader5)
+         return false;
+      ctx->shader_req_bits |= SHADER_REQ_FMA;
+      if (!ctx->cfg->use_gles && ctx->cfg->glsl_version >= 400)
+         ctx->glsl_ver_required = require_glsl_ver(ctx, 400);
+      emit_buff(&ctx->glsl_strbufs, "%s = %s(fma(%s, %s, %s)%s);\n",
+                dsts[0], get_string(dinfo.dstconv), srcs[0], srcs[1],
+                srcs[2], writemask);
+      break;
    case TGSI_OPCODE_MAD:
       emit_buff(&ctx->glsl_strbufs, "%s = %s((%s * %s + %s)%s);\n", dsts[0], get_string(dinfo.dstconv), srcs[0], srcs[1], srcs[2], writemask);
       break;
@@ -6230,6 +6242,8 @@ static void emit_header(const struct dump_ctx *ctx, struct vrend_glsl_strbufs *g
          }
          if (ctx->shader_req_bits & SHADER_REQ_SAMPLE_SHADING)
             emit_ext(glsl_strbufs, "OES_sample_variables", "require");
+         if (ctx->shader_req_bits & SHADER_REQ_FMA)
+            emit_ext(glsl_strbufs, "OES_gpu_shader5", "require");
          if (ctx->shader_req_bits & SHADER_REQ_GPU_SHADER5) {
             emit_ext(glsl_strbufs, "OES_gpu_shader5", "require");
             emit_ext(glsl_strbufs, "OES_shader_multisample_interpolation",
@@ -6283,6 +6297,10 @@ static void emit_header(const struct dump_ctx *ctx, struct vrend_glsl_strbufs *g
             emit_ver_ext(glsl_strbufs, "#version 130\n");
       }
 
+      if ((ctx->shader_req_bits & SHADER_REQ_FMA) &&
+          ctx->glsl_ver_required < 400)
+         emit_ext(glsl_strbufs, "ARB_gpu_shader5", "require");
+
       if (ctx->shader_req_bits & SHADER_REQ_ENHANCED_LAYOUTS)
          emit_ext(glsl_strbufs, "ARB_enhanced_layouts", "require");
 
@@ -6301,10 +6319,11 @@ static void emit_header(const struct dump_ctx *ctx, struct vrend_glsl_strbufs *g
 
       if (ctx->prog_type == TGSI_PROCESSOR_VERTEX && ctx->cfg->use_explicit_locations)
          emit_ext(glsl_strbufs, "ARB_explicit_attrib_location", "require");
-      if (ctx->prog_type == TGSI_PROCESSOR_FRAGMENT && fs_emit_layout(ctx))
+      if (ctx->prog_type == TGSI_PROCESSOR_FRAGMENT && fs_emit_layout(ctx) &&
+          ctx->glsl_ver_required < 150)
          emit_ext(glsl_strbufs, "ARB_fragment_coord_conventions", "require");
 
-      if (ctx->ubo_used_mask)
+      if (ctx->ubo_used_mask && ctx->glsl_ver_required < 140)
          emit_ext(glsl_strbufs, "ARB_uniform_buffer_object", "require");
 
       if (ctx->num_cull_dist_prop || ctx->key->num_in_cull || ctx->key->num_out_cull)
@@ -6319,6 +6338,10 @@ static void emit_header(const struct dump_ctx *ctx, struct vrend_glsl_strbufs *g
 
       for (uint32_t i = 0; i < ARRAY_SIZE(shader_req_table); i++) {
          if (shader_req_table[i].key == SHADER_REQ_SAMPLER_RECT && ctx->glsl_ver_required >= 140)
+            continue;
+         if (shader_req_table[i].key == SHADER_REQ_INSTANCE_ID && ctx->glsl_ver_required >= 140)
+            continue;
+         if (shader_req_table[i].key == SHADER_REQ_INTS && ctx->glsl_ver_required >= 330)
             continue;
 
          if (ctx->shader_req_bits & shader_req_table[i].key) {
@@ -8140,8 +8163,11 @@ bool vrend_convert_shader(const struct vrend_context *rctx,
    if (!tgsi_scan_shader(tokens, &ctx.info))
       goto fail;
 
-   /* if we are in core profile mode we should use GLSL 1.40 */
-   if (cfg->glsl_version >= 140)
+   /* A core profile need not advertise extension names for core GLSL
+    * features. Use the core language version that the host actually offers. */
+   if (cfg->use_core_profile && cfg->glsl_version >= 330)
+      ctx.glsl_ver_required = require_glsl_ver(&ctx, 330);
+   else if (cfg->glsl_version >= 140)
       ctx.glsl_ver_required = require_glsl_ver(&ctx, 140);
 
    if (ctx.iter.processor.Processor == TGSI_PROCESSOR_GEOMETRY ||

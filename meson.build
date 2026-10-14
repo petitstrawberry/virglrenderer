@@ -207,6 +207,10 @@ if cc.has_header('sys/eventfd.h')
    conf_data.set('HAVE_EVENTFD_H', 1)
 endif
 
+if cc.has_function('kqueue', prefix : '#include <sys/event.h>')
+   conf_data.set('HAVE_KQUEUE', 1)
+endif
+
 if cc.has_header('sys/select.h')
   conf_data.set('HAVE_SYS_SELECT_H', 1)
 endif

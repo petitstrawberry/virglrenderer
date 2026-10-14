@@ -51,6 +51,7 @@
 #mesondefine ENABLE_RENDER_SERVER_WORKER_MINIJAIL
 #mesondefine RENDER_SERVER_EXEC_PATH
 #mesondefine HAVE_EVENTFD_H
+#mesondefine HAVE_KQUEUE
 #mesondefine HAVE_DMABUF_H
 #mesondefine HAVE_LINUX_UDMABUF_H
 #mesondefine HAVE_DLFCN_H
