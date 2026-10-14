@@ -434,6 +434,16 @@ if with_unstable_apis
 endif
 
 subdir('src')
+
+if get_option('fma-host-test')
+   assert(host_machine.system() == 'darwin', 'FMA host readback test requires macOS CGL')
+   fma_host = executable(
+      'test_vrend_fma_host',
+      'tests/test_vrend_fma_host.c',
+      dependencies : [libvirglrenderer_dep, epoxy_dep, dependency('appleframeworks', modules : ['OpenGL'])]
+   )
+   test('vrend-fma-host', fma_host)
+endif
 if not with_host_windows
    subdir('vtest')
 endif

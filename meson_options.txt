@@ -135,3 +135,10 @@ option(
   value : 'false',
   description : 'enable unstable apis'
 )
+
+option(
+  'fma-host-test',
+  type : 'boolean',
+  value : false,
+  description : 'enable macOS TGSI FMA translator and actual GL readback test'
+)

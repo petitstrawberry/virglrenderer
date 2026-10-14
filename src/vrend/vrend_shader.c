@@ -6281,7 +6281,8 @@ static void emit_header(const struct dump_ctx *ctx, struct vrend_glsl_strbufs *g
       emit_hdr(glsl_strbufs, "precision highp int;\n");
    } else {
       if (ctx->prog_type == TGSI_PROCESSOR_COMPUTE) {
-         emit_ver_ext(glsl_strbufs, "#version 330\n");
+         emit_ver_extf(glsl_strbufs, "#version %d\n",
+                       MAX2(330, ctx->glsl_ver_required));
          emit_ext(glsl_strbufs, "ARB_compute_shader", "require");
       } else {
          if (ctx->glsl_ver_required > 150)
