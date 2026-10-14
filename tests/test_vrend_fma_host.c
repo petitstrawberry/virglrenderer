@@ -4,6 +4,8 @@
  * Exercise the real TGSI translator and native macOS shader compiler.  Values
  * come from a uniform, so constant folding cannot manufacture the fused result.
  */
+#undef NDEBUG
+#define GL_SILENCE_DEPRECATION 1
 #include "config.h"
 #include "vrend/vrend_shader.h"
 #include "tgsi/tgsi_text.h"
