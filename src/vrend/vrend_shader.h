@@ -241,6 +241,7 @@ struct vrend_shader_key {
 };
 
 struct vrend_shader_cfg {
+   uint32_t use_metal_compute : 1;
    uint32_t glsl_version : 12;
    uint32_t max_draw_buffers : 4;
    uint32_t max_shader_patch_varyings : 6;

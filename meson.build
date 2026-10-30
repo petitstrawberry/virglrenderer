@@ -82,6 +82,22 @@ prog_python = import('python').find_installation('python3')
 with_host_windows = host_machine.system() == 'windows'
 with_host_darwin = host_machine.system() == 'darwin'
 
+with_metal_compute = false
+metal_compute_deps = []
+if not get_option('metal-compute').disabled() and with_host_darwin
+  shaderc_dep = dependency('shaderc', required: get_option('metal-compute'))
+  spirv_cross_dep = dependency('spirv-cross-c-shared', required: get_option('metal-compute'))
+  if shaderc_dep.found() and spirv_cross_dep.found()
+    add_languages('objcpp', required: true)
+    add_project_arguments('-fobjc-arc', language: 'objcpp')
+    metal_compute_deps = [shaderc_dep, spirv_cross_dep,
+      dependency('appleframeworks', modules: ['Foundation', 'Metal'])]
+    with_metal_compute = true
+  endif
+elif get_option('metal-compute').enabled()
+  error('metal-compute requires macOS')
+endif
+
 not_found = dependency('', required: false)
 gbm_dep = not_found
 thread_dep = dependency('threads')
@@ -95,6 +111,7 @@ if not with_host_windows and not with_host_darwin
 endif
 
 conf_data = configuration_data()
+conf_data.set('HAVE_METAL_COMPUTE', with_metal_compute)
 conf_data.set('VERSION', meson.project_version())
 conf_data.set('_GNU_SOURCE', 1)
 # Compile unstable APIs unconditionally to avoid building two variants of
@@ -443,6 +460,13 @@ if get_option('fma-host-test')
       dependencies : [libvirglrenderer_dep, epoxy_dep, dependency('appleframeworks', modules : ['OpenGL'])]
    )
    test('vrend-fma-host', fma_host)
+endif
+if with_metal_compute
+   metal_host = executable('test_vrend_metal_compute_host',
+      'tests/test_vrend_metal_compute_host.c',
+      dependencies: [libvirglrenderer_dep, epoxy_dep,
+         dependency('appleframeworks', modules: ['OpenGL'])])
+   test('vrend-metal-compute-host', metal_host)
 endif
 if not with_host_windows
    subdir('vtest')

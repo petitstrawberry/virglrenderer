@@ -6189,6 +6189,10 @@ static void emit_ext(struct vrend_glsl_strbufs *glsl_strbufs, const char *name,
 
 static void emit_header(const struct dump_ctx *ctx, struct vrend_glsl_strbufs *glsl_strbufs)
 {
+   if (ctx->cfg->use_metal_compute) {
+      emit_ver_ext(glsl_strbufs, "#version 450\n");
+      return;
+   }
    if (ctx->cfg->use_gles) {
       emit_ver_extf(glsl_strbufs, "#version %d es\n", ctx->cfg->glsl_version);
 
@@ -6697,7 +6701,10 @@ static int emit_ios_common(const struct dump_ctx *ctx,
    }
    if (ctx->num_consts) {
       const char *cname = tgsi_proc_to_prefix(ctx->prog_type);
-      emit_hdrf(glsl_strbufs, "uniform uvec4 %sconst0[%d];\n", cname, ctx->num_consts);
+      if (ctx->cfg->use_metal_compute)
+         emit_hdrf(glsl_strbufs, "layout(set=1,binding=0,std140) uniform VirglConstants { uvec4 %sconst0[%d]; };\n", cname, ctx->num_consts);
+      else
+         emit_hdrf(glsl_strbufs, "uniform uvec4 %sconst0[%d];\n", cname, ctx->num_consts);
    }
 
    if (ctx->ubo_used_mask) {
@@ -8243,6 +8250,7 @@ bool vrend_convert_shader(const struct vrend_context *rctx,
       ctx.shader_req_bits |= SHADER_REQ_SHADER_NOPERSPECTIVE_INTERPOLATION;
    }
 
+   if (cfg->use_metal_compute) ctx.ssbo_first_binding = 0;
    emit_header(&ctx, &ctx.glsl_strbufs);
    ctx.glsl_ver_required = emit_ios(&ctx, &ctx.glsl_strbufs, &ctx.generic_ios,
                                     &ctx.texcoord_ios, &ctx.patches_emitted_mask,

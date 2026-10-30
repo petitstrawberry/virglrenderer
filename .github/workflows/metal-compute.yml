@@ -1,0 +1,21 @@
+name: Renderer builds
+on:
+  push:
+    branches: [scarlet]
+  pull_request:
+    branches: [scarlet]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build and run available native tests
+        run: nix build .#default --no-link --print-build-logs

@@ -64,6 +64,9 @@
 #include "virtgpu_drm.h"
 
 #include "tgsi/tgsi_text.h"
+#ifdef HAVE_METAL_COMPUTE
+#include "vrend_metal_compute.h"
+#endif
 
 #ifdef HAVE_EPOXY_GLX_H
 #include <epoxy/glx.h>
@@ -391,6 +394,7 @@ struct global_renderer_state {
    bool use_core_profile : 1;
    bool use_external_blob : 1;
    bool use_integer : 1;
+   bool use_metal_compute : 1;
    /* these appeared broken on at least one driver */
    bool use_explicit_locations : 1;
    /* threaded sync */
@@ -491,6 +495,9 @@ struct vrend_linked_shader_program {
 };
 
 struct vrend_shader {
+#ifdef HAVE_METAL_COMPUTE
+   struct vrend_metal_shader *metal_compute;
+#endif
    struct vrend_shader *next_variant;
    struct vrend_shader_selector *sel;
 
@@ -1324,6 +1331,9 @@ static void vrend_shader_dump(struct vrend_shader *shader)
 
 static void vrend_shader_destroy(struct vrend_shader *shader)
 {
+#ifdef HAVE_METAL_COMPUTE
+   vrend_metal_compute_destroy(shader->metal_compute);
+#endif
    list_for_each_entry_safe(struct vrend_linked_shader_program, ent, &shader->programs, sl[shader->sel->type])
       vrend_destroy_program(ent);
 
@@ -3857,7 +3867,7 @@ void vrend_set_single_ssbo(struct vrend_context *ctx,
    struct vrend_ssbo *ssbo = &ctx->sub->ssbo[shader_type][index];
    struct vrend_resource *res;
 
-   if (!has_feature(feat_ssbo))
+   if (!has_feature(feat_ssbo) && !(shader_type == PIPE_SHADER_COMPUTE && vrend_state.use_metal_compute))
       return;
 
    if (handle) {
@@ -4353,13 +4363,36 @@ static int vrend_shader_create(struct vrend_context *ctx,
       VREND_DEBUG_EXT(dbg_shader_tgsi, ctx, vrend_dump_tgsi(shader->sel->tokens, 0));
       VREND_DEBUG(dbg_shader_tgsi, ctx, "\n");
 
-      bool ret = vrend_convert_shader(ctx, &ctx->shader_cfg, shader->sel->tokens,
+      struct vrend_shader_cfg cfg = ctx->shader_cfg;
+      cfg.use_metal_compute = vrend_state.use_metal_compute && shader->sel->type == PIPE_SHADER_COMPUTE;
+      if (cfg.use_metal_compute) cfg.glsl_version = 450;
+      bool ret = vrend_convert_shader(ctx, &cfg, shader->sel->tokens,
                                       shader->sel->req_local_mem, key, &shader->sel->sinfo,
                                       &shader->var_sinfo, &shader->glsl_strings);
       if (!ret) {
          vrend_report_context_error(ctx, VIRGL_ERROR_CTX_ILLEGAL_SHADER, shader->sel->type);
          return -1;
       }
+#ifdef HAVE_METAL_COMPUTE
+      if (cfg.use_metal_compute) {
+         struct vrend_shader_info *info = &shader->sel->sinfo;
+         if (info->samplers_used_mask || info->images_used_mask || info->ubo_used_mask || shader->sel->req_local_mem)
+            return -1;
+         size_t length = 1;
+         for (int i = 0; i < shader->glsl_strings.num_strings; ++i)
+            length += strlen(shader->glsl_strings.strings[i].buf);
+         char *source = calloc(length, 1);
+         if (!source) return -1;
+         for (int i = 0; i < shader->glsl_strings.num_strings; ++i)
+            strcat(source, shader->glsl_strings.strings[i].buf);
+         shader->metal_compute = vrend_metal_compute_create(source, info->ssbo_used_mask);
+         free(source);
+         if (!shader->metal_compute) {
+            vrend_report_context_error(ctx, VIRGL_ERROR_CTX_ILLEGAL_SHADER, PIPE_SHADER_COMPUTE);
+            return -1;
+         }
+      }
+#endif
    } else if (!ctx->shader_cfg.use_gles && shader->sel->type != PIPE_SHADER_TESS_CTRL) {
       vrend_report_context_error(ctx, VIRGL_ERROR_CTX_ILLEGAL_SHADER, shader->sel->type);
       return -1;
@@ -4527,7 +4560,7 @@ int vrend_create_shader(struct vrend_context *ctx,
    }
 
    if (type == PIPE_SHADER_COMPUTE &&
-       !has_feature(feat_compute_shader)) {
+       !has_feature(feat_compute_shader) && !vrend_state.use_metal_compute) {
       virgl_error("Compute shaders not supported\n");
       return EINVAL;
    }
@@ -6185,7 +6218,74 @@ int vrend_draw_vbo(struct vrend_context *ctx,
    return 0;
 }
 
-void vrend_launch_grid(struct vrend_context *ctx,
+#ifdef HAVE_METAL_COMPUTE
+/* CGL and Metal do not share GL buffer objects. Retire GL writes, snapshot each
+ * allocation once, dispatch on Metal, then publish bytes into the same GL
+ * objects before the enclosing VirGL submission can signal its fence. */
+static bool vrend_launch_metal_grid(struct vrend_context *ctx, uint32_t *grid,
+                                  uint32_t indirect_handle)
+{
+   struct vrend_sub_context *sub = ctx->sub;
+   struct vrend_metal_buffer buffers[VREND_METAL_MAX_BUFFERS] = {0};
+   struct vrend_metal_binding bindings[VREND_METAL_MAX_BUFFERS] = {0};
+   GLuint ids[VREND_METAL_MAX_BUFFERS] = {0};
+   size_t buffer_count = 0, binding_count = 0;
+   GLint read_binding, write_binding;
+   glGetIntegerv(GL_COPY_READ_BUFFER_BINDING, &read_binding);
+   glGetIntegerv(GL_COPY_WRITE_BUFFER_BINDING, &write_binding);
+   bool ok = false;
+   struct vrend_shader_selector *sel = sub->shaders[PIPE_SHADER_COMPUTE];
+   if (indirect_handle || !sel || vrend_shader_select(sub, sel, NULL) ||
+       !sel->current || !sel->current->metal_compute)
+      goto out;
+   uint32_t mask = sel->sinfo.ssbo_used_mask;
+   if ((mask & sub->ssbo_used_mask[PIPE_SHADER_COMPUTE]) != mask)
+      goto out;
+   glFinish();
+   while (mask) {
+      unsigned slot = u_bit_scan(&mask);
+      if (binding_count == VREND_METAL_MAX_BUFFERS) goto out;
+      struct vrend_ssbo *ssbo = &sub->ssbo[PIPE_SHADER_COMPUTE][slot];
+      struct vrend_resource *res = ssbo->res;
+      if (!res || res->base.target != PIPE_BUFFER || !res->base.width0 ||
+          res->base.width0 > VREND_METAL_MAX_BUFFER_BYTES || !ssbo->buffer_size)
+         goto out;
+      size_t index = 0;
+      while (index < buffer_count && ids[index] != res->gl_id) ++index;
+      if (index == buffer_count) {
+         ids[index] = res->gl_id;
+         buffers[index].size = res->base.width0;
+         buffers[index].data = malloc(buffers[index].size);
+         ++buffer_count;
+         if (!buffers[index].data) goto out;
+         glBindBuffer(GL_COPY_READ_BUFFER, res->gl_id);
+         glGetBufferSubData(GL_COPY_READ_BUFFER, 0, buffers[index].size, buffers[index].data);
+      }
+      bindings[binding_count++] = (struct vrend_metal_binding) {
+         .slot = slot, .buffer = index, .offset = ssbo->buffer_offset, .size = ssbo->buffer_size,
+      };
+   }
+   if (glGetError() != GL_NO_ERROR) goto out;
+   struct vrend_constants *constants = &sub->consts[PIPE_SHADER_COMPUTE];
+   if (!vrend_metal_compute_dispatch(sel->current->metal_compute, grid,
+          constants->consts, (size_t)constants->num_consts * sizeof(uint32_t),
+          buffers, buffer_count, bindings, binding_count))
+      goto out;
+   for (size_t i = 0; i < buffer_count; ++i) {
+      glBindBuffer(GL_COPY_WRITE_BUFFER, ids[i]);
+      glBufferSubData(GL_COPY_WRITE_BUFFER, 0, buffers[i].size, buffers[i].data);
+   }
+   ok = glGetError() == GL_NO_ERROR;
+out:
+   glBindBuffer(GL_COPY_READ_BUFFER, read_binding);
+   glBindBuffer(GL_COPY_WRITE_BUFFER, write_binding);
+   for (size_t i = 0; i < buffer_count; ++i) free(buffers[i].data);
+   if (!ok) vrend_report_context_error(ctx, VIRGL_ERROR_CTX_ILLEGAL_RESOURCE, PIPE_SHADER_COMPUTE);
+   return ok;
+}
+#endif
+
+static void vrend_launch_gl_grid(struct vrend_context *ctx,
                        UNUSED uint32_t *block,
                        uint32_t *grid,
                        uint32_t indirect_handle,
@@ -6274,6 +6374,17 @@ void vrend_launch_grid(struct vrend_context *ctx,
    } else {
       glDispatchCompute(grid[0], grid[1], grid[2]);
    }
+}
+
+int vrend_launch_grid(struct vrend_context *ctx, uint32_t *block,
+                      uint32_t *grid, uint32_t indirect_handle, uint32_t indirect_offset)
+{
+#ifdef HAVE_METAL_COMPUTE
+   if (vrend_state.use_metal_compute)
+      return vrend_launch_metal_grid(ctx, grid, indirect_handle) ? 0 : EINVAL;
+#endif
+   vrend_launch_gl_grid(ctx, block, grid, indirect_handle, indirect_offset);
+   return 0;
 }
 
 static GLenum translate_blend_func(uint32_t pipe_blend)
@@ -7668,6 +7779,9 @@ int vrend_renderer_init(const struct vrend_if_cbs *cbs, uint32_t flags)
 
    init_features(gles ? 0 : gl_ver,
                  gles ? gl_ver : 0);
+#ifdef HAVE_METAL_COMPUTE
+   vrend_state.use_metal_compute = !gles && !has_feature(feat_compute_shader) && vrend_metal_compute_available();
+#endif
 
    if (!vrend_winsys_has_gl_colorspace())
       clear_feature(feat_srgb_write_control) ;
@@ -12402,7 +12516,8 @@ static void vrend_renderer_fill_caps_v2(int gl_ver, int gles_ver,  union virgl_c
    if (llvmpipe_string)
       memcpy(llvmpipe_string, "LLVMPIPE", 8);
 
-   glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE, range);
+   glGetFloatv(!vrend_state.use_gles && vrend_state.use_core_profile ?
+               GL_POINT_SIZE_RANGE : GL_ALIASED_POINT_SIZE_RANGE, range);
    caps->v2.min_aliased_point_size = range[0];
    caps->v2.max_aliased_point_size = range[1];
 
@@ -12528,7 +12643,19 @@ static void vrend_renderer_fill_caps_v2(int gl_ver, int gles_ver,  union virgl_c
    else
       caps->v2.max_vertex_attrib_stride = 2048;
 
-   if (has_feature(feat_compute_shader) && (vrend_state.use_gles || gl_ver >= 33)) {
+   if (vrend_state.use_metal_compute) {
+      caps->v2.max_compute_work_group_invocations = 128;
+      caps->v2.max_compute_shared_memory_size = 0;
+      caps->v2.max_compute_grid_size[0] = caps->v2.max_compute_grid_size[1] = caps->v2.max_compute_grid_size[2] = 65535;
+      caps->v2.max_compute_block_size[0] = caps->v2.max_compute_block_size[1] = 128;
+      caps->v2.max_compute_block_size[2] = 64;
+      caps->v2.max_shader_storage_blocks[PIPE_SHADER_COMPUTE] = 4;
+      /* The legacy shared fragment/compute limit cannot describe a CS-only
+       * fallback. Leave it unchanged; the per-stage CS limit above is exact. */
+      caps->v2.max_combined_shader_buffers = 4;
+      caps->v2.shader_buffer_offset_alignment = 4;
+      caps->v2.capability_bits |= VIRGL_CAP_COMPUTE_SHADER;
+   } else if (has_feature(feat_compute_shader) && (vrend_state.use_gles || gl_ver >= 33)) {
       glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, (GLint*)&caps->v2.max_compute_work_group_invocations);
       glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, (GLint*)&caps->v2.max_compute_shared_memory_size);
       glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, (GLint*)&caps->v2.max_compute_grid_size[0]);

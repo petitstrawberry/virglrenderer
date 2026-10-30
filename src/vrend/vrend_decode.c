@@ -1408,8 +1408,7 @@ static int vrend_decode_launch_grid(struct vrend_context *ctx, const uint32_t *b
    grid[2] = get_buf_entry(buf, VIRGL_LAUNCH_GRID_Z);
    indirect_handle = get_buf_entry(buf, VIRGL_LAUNCH_INDIRECT_HANDLE);
    indirect_offset = get_buf_entry(buf, VIRGL_LAUNCH_INDIRECT_OFFSET);
-   vrend_launch_grid(ctx, block, grid, indirect_handle, indirect_offset);
-   return 0;
+   return vrend_launch_grid(ctx, block, grid, indirect_handle, indirect_offset);
 }
 
 static int vrend_decode_set_streamout_targets(struct vrend_context *ctx,

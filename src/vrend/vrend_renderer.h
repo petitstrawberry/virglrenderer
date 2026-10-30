@@ -391,7 +391,7 @@ void vrend_set_single_abo(struct vrend_context *ctx,
                           uint32_t handle);
 void vrend_memory_barrier(struct vrend_context *ctx,
                           unsigned flags);
-void vrend_launch_grid(struct vrend_context *ctx,
+int vrend_launch_grid(struct vrend_context *ctx,
                        uint32_t *block,
                        uint32_t *grid,
                        uint32_t indirect_handle,

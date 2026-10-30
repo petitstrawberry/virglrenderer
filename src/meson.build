@@ -180,6 +180,10 @@ if with_tracing == 'sysprof'
 endif
 
 virgl_sources += vrend_sources
+if with_metal_compute
+   virgl_sources += ['vrend/vrend_metal_compute.mm']
+   virgl_depends += metal_compute_deps
+endif
 
 if gbm_dep.found()
    virgl_sources += vrend_winsys_gbm_sources
