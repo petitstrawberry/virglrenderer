@@ -4971,6 +4971,11 @@ void vrend_clear_surface(struct vrend_context *ctx, uint32_t surf_handle,
 
    // Do clear on blit framebuffer to avoid messing with main fb
    glBindFramebuffer(GL_FRAMEBUFFER, ctx->sub->blit_fb_ids[0]);
+   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+   GLenum clear_buffer = vrend_format_is_ds(surf->format) ? GL_NONE : GL_COLOR_ATTACHMENT0;
+   glReadBuffer(clear_buffer);
+   glDrawBuffers(1, &clear_buffer);
    vrend_fb_bind_texture_id(
        surf->texture, surf->gl_id, 0, surf->level,
        surf->first_layer != surf->last_layer ? -1 : (GLint)surf->first_layer,
@@ -11217,6 +11222,15 @@ static void vrend_renderer_blit_fbo(struct vrend_context *ctx,
    else if (info->b.mask & (PIPE_MASK_Z | PIPE_MASK_S))
       glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                              GL_TEXTURE_2D, 0, 0);
+
+   /* These FBOs also serve depth copies and partial clears. Neither the
+    * attachment nor read/draw buffer selection may leak from that use. */
+   GLenum blit_buffer = info->b.mask & PIPE_MASK_RGBA ? GL_COLOR_ATTACHMENT0 : GL_NONE;
+   for (unsigned fbo = 0; fbo < 2; ++fbo) {
+      glBindFramebuffer(GL_FRAMEBUFFER, ctx->sub->blit_fb_ids[fbo]);
+      glReadBuffer(blit_buffer);
+      glDrawBuffers(1, &blit_buffer);
+   }
 
    int n_layers = info->b.src.box.depth == info->b.dst.box.depth ? info->b.dst.box.depth : 1;
    for (int i = 0; i < n_layers; i++) {

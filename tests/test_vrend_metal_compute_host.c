@@ -120,6 +120,62 @@ static void depth_copy(void)
    for (unsigned y = 0; y < 4; ++y)
       for (unsigned x = 0; x < 4; ++x)
          assert(destination[y*4+x] == source[y < 2 && x >= 2 ? (y+2)*4+x-1 : y*4+x]);
+   /* Reuse the depth-copy FBO for alternating color/depth partial clears.
+    * Draw/read GL_NONE and stale attachments must not leak across commands. */
+   uint32_t pixels[16];
+   for (unsigned i = 0; i < 16; ++i) pixels[i] = 0xff111111;
+   struct iovec color_io = { pixels, sizeof(pixels) };
+   args.handle = 302; args.format = VIRGL_FORMAT_R8G8B8A8_UNORM;
+   args.bind = VIRGL_BIND_RENDER_TARGET | VIRGL_BIND_SAMPLER_VIEW;
+   assert(virgl_renderer_resource_create(&args, NULL, 0) == 0);
+   assert(virgl_renderer_resource_attach_iov(302, &color_io, 1) == 0);
+   virgl_renderer_ctx_attach_resource(1, 302);
+   assert(virgl_renderer_transfer_write_iov(302, 1, 0, 16, 64, &box, 0, NULL, 0) == 0);
+   c.count = 0;
+   header(&c, VIRGL_CCMD_CREATE_OBJECT, VIRGL_OBJECT_SURFACE, 5);
+   for (unsigned i = 0; i < 5; ++i) word(&c, (uint32_t[]){302,302,VIRGL_FORMAT_R8G8B8A8_UNORM,0,0}[i]);
+   header(&c, VIRGL_CCMD_CREATE_OBJECT, VIRGL_OBJECT_SURFACE, 5);
+   for (unsigned i = 0; i < 5; ++i) word(&c, (uint32_t[]){301,301,VIRGL_FORMAT_Z32_FLOAT,0,0}[i]);
+   header(&c, VIRGL_CCMD_CLEAR_SURFACE, 0, 10);
+   for (unsigned i = 0; i < 10; ++i) word(&c, (uint32_t[]){PIPE_CLEAR_COLOR0<<1,302,0x3f800000,0,0,0x3f800000,1,1,2,2}[i]);
+   union { double value; uint32_t words[2]; } clear_depth = { .value = 0.625 };
+   header(&c, VIRGL_CCMD_CLEAR_SURFACE, 0, 10);
+   for (unsigned i = 0; i < 10; ++i) word(&c, (uint32_t[]){PIPE_CLEAR_DEPTH<<1,301,clear_depth.words[0],clear_depth.words[1],0,0,0,0,1,1}[i]);
+   header(&c, VIRGL_CCMD_CLEAR_SURFACE, 0, 10);
+   for (unsigned i = 0; i < 10; ++i) word(&c, (uint32_t[]){PIPE_CLEAR_COLOR0<<1,302,0,0x3f800000,0,0x3f800000,0,0,1,1}[i]);
+   assert(virgl_renderer_submit_cmd(c.words, 1, c.count) == 0);
+   wait_fence(11);
+   assert(virgl_renderer_transfer_read_iov(302, 1, 0, 16, 64, &box, 0, NULL, 0) == 0);
+   for (unsigned y = 0; y < 4; ++y)
+      for (unsigned x = 0; x < 4; ++x)
+         assert(pixels[y*4+x] == (x==0 && y==0 ? 0xff00ff00u : x>=1 && x<=2 && y>=1 && y<=2 ? 0xff0000ffu : 0xff111111u));
+   assert(virgl_renderer_transfer_read_iov(301, 1, 0, 16, 64, &box, 0, NULL, 0) == 0);
+   assert(destination[0] == 0.625f);
+   for (unsigned y = 0; y < 4; ++y)
+      for (unsigned x = 0; x < 4; ++x)
+         if (x || y) assert(destination[y*4+x] == source[y < 2 && x >= 2 ? (y+2)*4+x-1 : y*4+x]);
+   /* Color mip blits use both reused FBOs, including the destination whose
+    * depth-copy draw buffer is GL_NONE until explicitly reset. */
+   uint32_t mip_pixels[16] = {0};
+   struct iovec mip_io = { mip_pixels, sizeof(mip_pixels) };
+   args.handle = 303; args.width = 8; args.height = 8; args.last_level = 3;
+   assert(virgl_renderer_resource_create(&args, NULL, 0) == 0);
+   assert(virgl_renderer_resource_attach_iov(303, &mip_io, 1) == 0);
+   virgl_renderer_ctx_attach_resource(1, 303);
+   c.count = 0;
+   header(&c, VIRGL_CCMD_BLIT, 0, 21);
+   const uint32_t mip_blit[] = {PIPE_MASK_RGBA,0,0,303,1,VIRGL_FORMAT_R8G8B8A8_UNORM,0,0,0,4,4,1,302,0,VIRGL_FORMAT_R8G8B8A8_UNORM,0,0,0,4,4,1};
+   for (unsigned i = 0; i < 21; ++i) word(&c, mip_blit[i]);
+   assert(virgl_renderer_submit_cmd(c.words, 1, c.count) == 0);
+   wait_fence(12);
+   assert(virgl_renderer_transfer_read_iov(303, 1, 1, 16, 64, &box, 0, NULL, 0) == 0);
+   for (unsigned i = 0; i < 16; ++i) assert(mip_pixels[i] == pixels[i]);
+   virgl_renderer_ctx_detach_resource(1, 303);
+   virgl_renderer_resource_unref(303);
+   printf("PASS color mip blit after depth copies and partial clears: exact16pixels\n");
+   virgl_renderer_ctx_detach_resource(1, 302);
+   virgl_renderer_resource_unref(302);
+   printf("PASS alternating color/depth partial clears after depth copies: exact pixels and preserved texels\n");
    printf("PASS D32 GPU image copies on CGL: full and partial, exact depth values and untouched texels\n");
    for (unsigned i = 0; i < 2; ++i) {
       virgl_renderer_ctx_detach_resource(1, 300 + i);
