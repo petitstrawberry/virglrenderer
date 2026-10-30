@@ -126,6 +126,9 @@ struct vrend_query {
    int sub_ctx_id;
    struct vrend_resource *res;
    bool fake_samples_passed;
+   bool metal_clock;
+   bool metal_ready;
+   uint64_t metal_start, metal_result;
 };
 
 struct global_error_state {
@@ -395,6 +398,7 @@ struct global_renderer_state {
    bool use_external_blob : 1;
    bool use_integer : 1;
    bool use_metal_compute : 1;
+   bool use_metal_timestamps : 1;
    /* these appeared broken on at least one driver */
    bool use_explicit_locations : 1;
    /* threaded sync */
@@ -7781,6 +7785,8 @@ int vrend_renderer_init(const struct vrend_if_cbs *cbs, uint32_t flags)
                  gles ? gl_ver : 0);
 #ifdef HAVE_METAL_COMPUTE
    vrend_state.use_metal_compute = !gles && !has_feature(feat_compute_shader) && vrend_metal_compute_available();
+   uint64_t clock_probe;
+   vrend_state.use_metal_timestamps = vrend_state.use_metal_compute && vrend_metal_timestamp_ns(&clock_probe);
 #endif
 
    if (!vrend_winsys_has_gl_colorspace())
@@ -10845,8 +10851,11 @@ void vrend_renderer_resource_copy_region(struct vrend_context *ctx,
       return;
    }
 
-   if (!vrend_format_can_render(src_res->base.format) ||
-       !vrend_format_can_render(dst_res->base.format)) {
+   bool depth_stencil = vrend_format_is_ds(src_res->base.format) &&
+                        src_res->base.format == dst_res->base.format;
+   GLenum copy_buffer = depth_stencil ? GL_NONE : GL_COLOR_ATTACHMENT0;
+   if ((!vrend_format_can_render(src_res->base.format) ||
+        !vrend_format_can_render(dst_res->base.format)) && !depth_stencil) {
       VREND_DEBUG(dbg_copy_resource, ctx, "COPY_REGION: use resource_copy_fallback\n");
       vrend_resource_copy_fallback(src_res, dst_res, dst_level, dstx,
                                    dsty, dstz, src_level, src_box);
@@ -10859,17 +10868,30 @@ void vrend_renderer_resource_copy_region(struct vrend_context *ctx,
    /* clean out fb ids */
    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                           GL_TEXTURE_2D, 0, 0);
+   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                          GL_TEXTURE_2D, 0, 0);
    vrend_fb_bind_texture(src_res, 0, src_level, src_box->z);
+   glReadBuffer(copy_buffer);
+   glDrawBuffers(1, &copy_buffer);
 
    glBindFramebuffer(GL_FRAMEBUFFER, ctx->sub->blit_fb_ids[1]);
    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                           GL_TEXTURE_2D, 0, 0);
+   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                          GL_TEXTURE_2D, 0, 0);
    vrend_fb_bind_texture(dst_res, 0, dst_level, dstz);
+   glDrawBuffers(1, &copy_buffer);
+   glReadBuffer(copy_buffer);
    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->sub->blit_fb_ids[1]);
 
    glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->sub->blit_fb_ids[0]);
 
    glmask = GL_COLOR_BUFFER_BIT;
+   if (depth_stencil) {
+      const struct util_format_description *desc = util_format_description(src_res->base.format);
+      glmask = (util_format_has_depth(desc) ? GL_DEPTH_BUFFER_BIT : 0) |
+               (util_format_has_stencil(desc) ? GL_STENCIL_BUFFER_BIT : 0);
+   }
    glDisable(GL_SCISSOR_TEST);
 
    if (!src_res->y_0_top) {
@@ -10896,11 +10918,15 @@ void vrend_renderer_resource_copy_region(struct vrend_context *ctx,
                      dy2,
                      glmask, GL_NEAREST);
 
-   glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->sub->blit_fb_ids[0]);
+   glBindFramebuffer(GL_FRAMEBUFFER, ctx->sub->blit_fb_ids[0]);
    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                           GL_TEXTURE_2D, 0, 0);
-   glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx->sub->blit_fb_ids[1]);
+   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                          GL_TEXTURE_2D, 0, 0);
+   glBindFramebuffer(GL_FRAMEBUFFER, ctx->sub->blit_fb_ids[1]);
    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                          GL_TEXTURE_2D, 0, 0);
+   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                           GL_TEXTURE_2D, 0, 0);
 
    glBindFramebuffer(GL_FRAMEBUFFER, ctx->sub->fb_id);
@@ -11627,8 +11653,13 @@ static bool vrend_check_query(struct vrend_query *query)
    bool ret;
 
    state.result_size = vrend_is_timer_query(query->gltype) ? 8 : 4;
-   ret = vrend_get_one_query_result(query->id, state.result_size == 8,
-         &state.result);
+   if (query->metal_clock) {
+      ret = query->metal_ready;
+      state.result = query->metal_result;
+   } else {
+      ret = vrend_get_one_query_result(query->id, state.result_size == 8,
+            &state.result);
+   }
    if (ret == false)
       return false;
 
@@ -11881,6 +11912,7 @@ int vrend_create_query(struct vrend_context *ctx, uint32_t handle,
    }
 
    if (!err) {
+      q->metal_clock = vrend_state.use_metal_timestamps && vrend_is_timer_query(q->gltype);
       glGenQueries(1, &q->id);
       if (!vrend_renderer_object_insert(ctx, q, handle, VIRGL_OBJECT_QUERY)) {
          glDeleteQueries(1, &q->id);
@@ -11922,6 +11954,16 @@ int vrend_begin_query(struct vrend_context *ctx, uint32_t handle)
       return EINVAL;
 
    list_delinit(&q->waiting_queries);
+#ifdef HAVE_METAL_COMPUTE
+   if (q->metal_clock) {
+      q->metal_ready = false;
+      if (q->gltype == GL_TIME_ELAPSED) {
+         glFinish();
+         if (!vrend_metal_timestamp_ns(&q->metal_start)) return EIO;
+      }
+      return 0;
+   }
+#endif
 
    if (q->gltype == GL_TIMESTAMP)
       return 0;
@@ -11942,6 +11984,21 @@ int vrend_end_query(struct vrend_context *ctx, uint32_t handle)
 
    if (q->index > 0 && !has_feature(feat_transform_feedback3))
       return EINVAL;
+
+#ifdef HAVE_METAL_COMPUTE
+   if (q->metal_clock) {
+      uint64_t end;
+      q->metal_ready = false;
+      // CGL renders on a separate, opaque Metal queue. Retire it first so the
+      // timestamp marker cannot overtake any preceding graphics commands.
+      glFinish();
+      if (!vrend_metal_timestamp_ns(&end)) return EIO;
+      if (q->gltype == GL_TIME_ELAPSED && end < q->metal_start) return EIO;
+      q->metal_result = q->gltype == GL_TIME_ELAPSED ? end - q->metal_start : end;
+      q->metal_ready = true;
+      return 0;
+   }
+#endif
 
    if (vrend_is_timer_query(q->gltype)) {
       if (q->gltype == GL_TIMESTAMP && !has_feature(feat_timer_query)) {

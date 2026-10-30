@@ -42,3 +42,24 @@ checks two GPU read-modify-write dispatches, descriptor aliases at nonzero slots
 offsets, unchanged boundary bytes and fenced GPU readback. Hosts without Metal
 or an accelerated CGL context skip the hardware test explicitly. A skip is not
 positive GPU execution validation.
+
+CGL transfer and timer queries
+-----------------------------
+
+On CGL, equal-format depth/stencil image copies use framebuffer blits with the
+matching depth/stencil mask and nearest filtering. The reusable blit FBOs detach
+both color and depth attachments, and select the appropriate read/draw buffers.
+This avoids the non-renderable color fallback for depth formats.
+
+When the Metal bridge is active and its GPU clock probe succeeds, timestamp and
+elapsed-time queries use actual Metal command-buffer completion timestamps.
+Each sample retires preceding GL work with ``glFinish``, submits a four-byte GPU
+blit marker, waits for completion, and converts ``GPUEndTime`` from seconds to
+nanoseconds. No CPU clock or generated sample replaces the GPU timestamp. The
+synchronous exchange includes queue and marker overhead and is intended for
+correct ordering rather than low-overhead profiling. A failed GPU sample is a
+submission error; it never publishes a successful zero result. Native GL timer
+queries retain their existing path outside this bridge.
+
+The host test also verifies full and partial D32 copies with untouched texels,
+monotonic nonzero timestamp queries and nonzero elapsed results.

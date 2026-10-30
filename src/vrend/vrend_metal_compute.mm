@@ -8,6 +8,7 @@
 #include <shaderc/shaderc.h>
 #include <spirv_cross_c.h>
 #include <cstdio>
+#include <cmath>
 #include <cstring>
 #include <new>
 #include <string>
@@ -46,6 +47,29 @@ static void safe_math(MTLCompileOptions *options)
 bool vrend_metal_compute_available(void)
 {
    @autoreleasepool { return metal_device() != nil; }
+}
+
+bool vrend_metal_timestamp_ns(uint64_t *value)
+{
+   if (!value) return false;
+   @autoreleasepool {
+      static id<MTLCommandQueue> queue = [metal_device() newCommandQueue];
+      id<MTLBuffer> scratch = [metal_device() newBufferWithLength:4 options:MTLResourceStorageModeShared];
+      id<MTLCommandBuffer> command = [queue commandBuffer];
+      id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
+      if (!scratch || !command || !encoder) return false;
+      // An actual GPU operation is necessary: empty command buffers need not
+      // acquire GPU start/end timestamps on Apple's drivers.
+      [encoder fillBuffer:scratch range:NSMakeRange(0, 4) value:0];
+      [encoder endEncoding];
+      [command commit];
+      [command waitUntilCompleted];
+      if (command.status != MTLCommandBufferStatusCompleted) return false;
+      double ns = command.GPUEndTime * 1.0e9;
+      if (!std::isfinite(ns) || ns <= 0 || ns >= double(UINT64_MAX)) return false;
+      *value = uint64_t(ns);
+      return true;
+   }
 }
 
 static bool translate(const char *glsl, uint32_t expected_mask,

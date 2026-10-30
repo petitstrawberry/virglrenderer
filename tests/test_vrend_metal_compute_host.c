@@ -76,6 +76,92 @@ static void wait_fence(unsigned value)
    for (unsigned i = 0; i < 1000 && last_fence != value; ++i) { virgl_renderer_poll(); usleep(1000); }
    assert(last_fence == value);
 }
+/* CGL lacks glCopyImageSubData. Depth copies must use the depth attachment
+ * and mask, including when the reusable blit FBO previously held a color. */
+static void depth_copy(void)
+{
+   float source[16], destination[16];
+   for (unsigned i = 0; i < 16; ++i) { source[i] = (float)i / 16; destination[i] = -1; }
+   struct iovec io[2] = {{ source, sizeof(source) }, { destination, sizeof(destination) }};
+   struct virgl_renderer_resource_create_args args = {
+      .target = PIPE_TEXTURE_2D, .format = VIRGL_FORMAT_Z32_FLOAT,
+      .bind = VIRGL_BIND_DEPTH_STENCIL | VIRGL_BIND_SAMPLER_VIEW,
+      .width = 4, .height = 4, .depth = 1, .array_size = 1,
+   };
+   for (unsigned i = 0; i < 2; ++i) {
+      args.handle = 300 + i;
+      assert(virgl_renderer_resource_create(&args, NULL, 0) == 0);
+      assert(virgl_renderer_resource_attach_iov(args.handle, &io[i], 1) == 0);
+      virgl_renderer_ctx_attach_resource(1, args.handle);
+   }
+   struct virgl_box box = { .w = 4, .h = 4, .d = 1 };
+   assert(virgl_renderer_transfer_write_iov(300, 1, 0, 16, 64, &box, 0, NULL, 0) == 0);
+   struct commands c = {0};
+   header(&c, VIRGL_CCMD_RESOURCE_COPY_REGION, 0, 13);
+   const uint32_t copy[] = {301, 0, 0, 0, 0, 300, 0, 0, 0, 0, 4, 4, 1};
+   for (unsigned i = 0; i < 13; ++i) word(&c, copy[i]);
+   assert(virgl_renderer_submit_cmd(c.words, 1, c.count) == 0);
+   wait_fence(9);
+   assert(virgl_renderer_transfer_read_iov(301, 1, 0, 16, 64, &box, 0, NULL, 0) == 0);
+   for (unsigned i = 0; i < 16; ++i) {
+      if (source[i] != destination[i]) {
+         fprintf(stderr, "depth copy word %u got %g expected %g\n", i, destination[i], source[i]);
+         abort();
+      }
+   }
+   /* A partial copy must preserve all untouched texels. */
+   c.count = 0;
+   header(&c, VIRGL_CCMD_RESOURCE_COPY_REGION, 0, 13);
+   const uint32_t partial[] = {301, 0, 2, 0, 0, 300, 0, 1, 2, 0, 2, 2, 1};
+   for (unsigned i = 0; i < 13; ++i) word(&c, partial[i]);
+   assert(virgl_renderer_submit_cmd(c.words, 1, c.count) == 0);
+   wait_fence(10);
+   assert(virgl_renderer_transfer_read_iov(301, 1, 0, 16, 64, &box, 0, NULL, 0) == 0);
+   for (unsigned y = 0; y < 4; ++y)
+      for (unsigned x = 0; x < 4; ++x)
+         assert(destination[y*4+x] == source[y < 2 && x >= 2 ? (y+2)*4+x-1 : y*4+x]);
+   printf("PASS D32 GPU image copies on CGL: full and partial, exact depth values and untouched texels\n");
+   for (unsigned i = 0; i < 2; ++i) {
+      virgl_renderer_ctx_detach_resource(1, 300 + i);
+      virgl_renderer_resource_unref(300 + i);
+   }
+}
+static void timestamp_queries(void)
+{
+   struct virgl_host_query_state result = {0};
+   struct iovec io = { &result, sizeof(result) };
+   struct virgl_renderer_resource_create_args args = {
+      .handle = 350, .target = PIPE_BUFFER, .format = VIRGL_FORMAT_R8_UNORM,
+      .bind = VIRGL_BIND_CUSTOM, .width = sizeof(result), .height = 1, .depth = 1, .array_size = 1,
+   };
+   assert(virgl_renderer_resource_create(&args, NULL, 0) == 0);
+   assert(virgl_renderer_resource_attach_iov(350, &io, 1) == 0);
+   virgl_renderer_ctx_attach_resource(1, 350);
+   uint64_t previous = 0;
+   for (unsigned i = 0; i < 3; ++i) {
+      result.query_state = 0;
+      struct commands c = {0};
+      header(&c, VIRGL_CCMD_CREATE_OBJECT, VIRGL_OBJECT_QUERY, 4);
+      word(&c, 900); word(&c, i == 2 ? PIPE_QUERY_TIME_ELAPSED : PIPE_QUERY_TIMESTAMP);
+      word(&c, 0); word(&c, 350);
+      if (i == 2) { header(&c, VIRGL_CCMD_BEGIN_QUERY, 0, 1); word(&c, 900); }
+      header(&c, VIRGL_CCMD_END_QUERY, 0, 1); word(&c, 900);
+      header(&c, VIRGL_CCMD_GET_QUERY_RESULT, 0, 2); word(&c, 900); word(&c, 1);
+      assert(virgl_renderer_submit_cmd(c.words, 1, c.count) == 0);
+      wait_fence(30 + i);
+      assert(result.query_state == VIRGL_QUERY_STATE_DONE && result.result_size == 8);
+      assert(result.result > 0);
+      if (i == 1) assert(result.result > previous);
+      previous = result.result;
+      c.count = 0;
+      header(&c, VIRGL_CCMD_DESTROY_OBJECT, VIRGL_OBJECT_QUERY, 1); word(&c, 900);
+      assert(virgl_renderer_submit_cmd(c.words, 1, c.count) == 0);
+   }
+   virgl_renderer_ctx_detach_resource(1, 350);
+   virgl_renderer_resource_unref(350);
+   printf("PASS timestamp queries: monotonic Metal GPU completion nanoseconds and elapsed time\n");
+}
+
 static const char program[] =
    "COMP\nPROPERTY CS_FIXED_BLOCK_WIDTH 4\nPROPERTY CS_FIXED_BLOCK_HEIGHT 1\nPROPERTY CS_FIXED_BLOCK_DEPTH 1\n"
    "DCL SV[0], BLOCK_ID\nDCL SV[1], THREAD_ID\nDCL BUFFER[3]\nDCL BUFFER[7]\nDCL CONST[0]\nDCL TEMP[0..3]\n"
@@ -115,6 +201,16 @@ int main(void)
    assert(caps.v2.max_shader_storage_blocks[PIPE_SHADER_COMPUTE] == 4);
    assert(caps.v2.max_shader_storage_blocks[PIPE_SHADER_FRAGMENT] == 0);
    assert(glGetError() == GL_NO_ERROR);
+   GLuint clock;
+   GLuint64 tick = 0;
+   glGenQueries(1, &clock);
+   glQueryCounter(clock, GL_TIMESTAMP);
+   glFinish();
+   glGetQueryObjectui64v(clock, GL_QUERY_RESULT, &tick);
+   printf("CGL timestamp counter=%llu\n", (unsigned long long)tick);
+   glDeleteQueries(1, &clock);
+   depth_copy();
+   timestamp_queries();
    uint32_t data[16];
    for (unsigned i = 0; i < 16; ++i) data[i] = 13;
    struct iovec iov = { .iov_base = data, .iov_len = sizeof(data) };

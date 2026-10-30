@@ -23,6 +23,9 @@ struct vrend_metal_binding {
 extern "C" {
 #endif
 bool vrend_metal_compute_available(void);
+/* Actual completion timestamp of a retired Metal GPU marker, in nanoseconds.
+ * The caller must retire preceding CGL work before inserting this marker. */
+bool vrend_metal_timestamp_ns(uint64_t *value);
 struct vrend_metal_shader *vrend_metal_compute_create(const char *glsl, uint32_t ssbo_mask);
 void vrend_metal_compute_destroy(struct vrend_metal_shader *shader);
 bool vrend_metal_compute_dispatch(struct vrend_metal_shader *shader,
